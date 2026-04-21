@@ -3,7 +3,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <direct.h>
+#else
 #include <sys/stat.h>
+#endif
+
+#ifdef _WIN32
+#define MAKE_OUTPUT_DIR(path) _mkdir(path)
+#else
+#define MAKE_OUTPUT_DIR(path) mkdir(path, 0777)
+#endif
 
 static int has_bmp_extension(const char *name) {
     size_t len = strlen(name);
@@ -31,7 +41,7 @@ int make_output_path(const char *name_output, char *out_path, size_t out_size) {
         return 0;
     }
 
-    mkdir("./output", 0777);
+    (void)MAKE_OUTPUT_DIR("./output");
 
     if (has_bmp_extension(name_output)) {
         snprintf(out_path, out_size, "./output/%s", name_output);
