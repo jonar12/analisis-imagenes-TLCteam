@@ -23,6 +23,8 @@ int main(void) {
 
     start_time = omp_get_wtime();
 
+    // omp_set_num_threads(6);
+
     #pragma omp parallel
     {
         #pragma omp single
