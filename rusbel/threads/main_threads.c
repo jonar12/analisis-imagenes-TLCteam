@@ -2,6 +2,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <omp.h>
+
+#ifdef _WIN32
+#include <direct.h>
+#else
+#include <sys/stat.h>
+#endif
+
 #include "desenfoque.h"
 #include "inv_img.h"
 
@@ -10,6 +17,12 @@
 // #define NUM_THREADS 18
 
 int main(){
+#ifdef _WIN32
+    _mkdir("../img");
+#else
+    mkdir("../img", 0777);
+#endif
+
     double start_time, end_time;
     omp_set_num_threads(NUM_THREADS);
 
@@ -64,6 +77,7 @@ int main(){
     }
 
     end_time = omp_get_wtime();
+    printf("Threads utilizados: %d\n", NUM_THREADS);
     printf("Tiempo de ejecucion: %.6f segundos\n", end_time - start_time);
 
     return 0;

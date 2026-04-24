@@ -28,7 +28,7 @@ extern void inv_img_grey_vertical(char *name, char *path) {
 
     ptr = (unsigned char*)malloc(alto*ancho*3*sizeof(unsigned char));
 
-    while(!feof(image)){
+    for (long p = 0; p < alto * ancho; p++) {
       b = fgetc(image);
       g = fgetc(image);
       r = fgetc(image);
@@ -86,7 +86,7 @@ extern void inv_img_grey_horizontal(char *name, char *path) {
 
     ptr = (unsigned char*)malloc(alto*ancho*3*sizeof(unsigned char));
 
-    while(!feof(image)){
+    for (long p = 0; p < alto * ancho; p++) {
       b = fgetc(image);
       g = fgetc(image);
       r = fgetc(image);
@@ -108,9 +108,9 @@ extern void inv_img_grey_horizontal(char *name, char *path) {
       // fputc(ptr[i], outputImage);
       // fputc(ptr[i+1], outputImage);
       // fputc(ptr[i+2], outputImage);
-      fputc(ptr[(ancho * alto) - i], outputImage);
-      fputc(ptr[(ancho * alto) - i], outputImage);
-      fputc(ptr[(ancho * alto) - i], outputImage);
+      fputc(ptr[(ancho * alto) - 1 - i], outputImage);
+      fputc(ptr[(ancho * alto) - 1 - i], outputImage);
+      fputc(ptr[(ancho * alto) - 1 - i], outputImage);
       cuenta++;
       if (cuenta == 0){
         cuenta = ancho;
@@ -151,7 +151,7 @@ extern void inv_img_color_vertical(char *name, char *path) {
 
     ptr = (unsigned char*)malloc(alto*ancho*3*sizeof(unsigned char));
 
-    while(!feof(image)){
+    for (long p = 0; p < alto * ancho; p++) {
       b = fgetc(image);
       g = fgetc(image);
       r = fgetc(image);
@@ -210,7 +210,7 @@ extern void inv_img_color_horizontal(char *name, char *path) {
 
     ptr = (unsigned char*)malloc(alto*ancho*3*sizeof(unsigned char));
 
-    while(!feof(image)){
+    for (long p = 0; p < alto * ancho; p++) {
       b = fgetc(image);
       g = fgetc(image);
       r = fgetc(image);
@@ -229,9 +229,9 @@ extern void inv_img_color_horizontal(char *name, char *path) {
       // fputc(ptr[i], outputImage);
       // fputc(ptr[i+1], outputImage);
       // fputc(ptr[i+2], outputImage);
-      fputc(ptr[((ancho * alto) - i) * 3],     outputImage);
-      fputc(ptr[((ancho * alto) - i) * 3 + 1], outputImage);
-      fputc(ptr[((ancho * alto) - i) * 3 + 2], outputImage);
+      fputc(ptr[((ancho * alto) - 1 - i) * 3],     outputImage);
+      fputc(ptr[((ancho * alto) - 1 - i) * 3 + 1], outputImage);
+      fputc(ptr[((ancho * alto) - 1 - i) * 3 + 2], outputImage);
       cuenta++;
       if (cuenta == 0){
         cuenta = ancho;
