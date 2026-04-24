@@ -12,10 +12,6 @@
 #include "desenfoque.h"
 #include "inv_img.h"
 
-#define NUM_THREADS 6
-// #define NUM_THREADS 12
-// #define NUM_THREADS 18
-
 int main(){
 #ifdef _WIN32
     _mkdir("../img");
@@ -23,12 +19,15 @@ int main(){
     mkdir("../img", 0777);
 #endif
 
-    double start_time, end_time;
-    omp_set_num_threads(NUM_THREADS);
+    int num_threads_arr[] = {6, 12, 18};
+    for (int i = 0; i < 3; i++) {
+        int current_threads = num_threads_arr[i];
+        double start_time, end_time;
+        omp_set_num_threads(current_threads);
 
-    start_time = omp_get_wtime();
+        start_time = omp_get_wtime();
 
-    #pragma omp parallel
+        #pragma omp parallel
     {
         #pragma omp sections
         {
@@ -76,9 +75,10 @@ int main(){
         }
     }
 
-    end_time = omp_get_wtime();
-    printf("Threads utilizados: %d\n", NUM_THREADS);
-    printf("Tiempo de ejecucion: %.6f segundos\n", end_time - start_time);
+        end_time = omp_get_wtime();
+        printf("Threads utilizados: %d\n", current_threads);
+        printf("Tiempo de ejecucion: %.6f segundos\n", end_time - start_time);
+    }
 
     return 0;
 }
