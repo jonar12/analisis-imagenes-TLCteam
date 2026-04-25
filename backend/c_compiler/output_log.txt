@@ -1,0 +1,72 @@
+Función: desenfoque, con ../input/imagen_2.bmp
+Localidades totales leídas: 1500000
+Localidades totales escritas: 1500000
+-------------------------------------
+Función: desenfoque, con ../input/imagen_2.bmp
+Localidades totales leídas: 1500000
+Localidades totales escritas: 1500000
+-------------------------------------
+Función: desenfoque, con ../input/imagen_3.bmp
+Localidades totales leídas: 3686400
+Localidades totales escritas: 3686400
+-------------------------------------
+Función: desenfoque, con ../input/imagen_1.bmp
+Localidades totales leídas: 4000000
+Localidades totales escritas: 4000000
+-------------------------------------
+Función: desenfoque, con ../input/imagen_3.bmp
+Localidades totales leídas: 3686400
+Localidades totales escritas: 3686400
+-------------------------------------
+Función: desenfoque, con ../input/imagen_1.bmp
+Localidades totales leídas: 4000000
+Localidades totales escritas: 4000000
+-------------------------------------
+Función: desenfoque, con ../input/imagen_2.bmp
+Localidades totales leídas: 1500000
+Localidades totales escritas: 1500000
+-------------------------------------
+Función: desenfoque, con ../input/imagen_2.bmp
+Localidades totales leídas: 1500000
+Localidades totales escritas: 1500000
+-------------------------------------
+Función: desenfoque, con ../input/imagen_3.bmp
+Localidades totales leídas: 3686400
+Localidades totales escritas: 3686400
+-------------------------------------
+Función: desenfoque, con ../input/imagen_3.bmp
+Localidades totales leídas: 3686400
+Localidades totales escritas: 3686400
+-------------------------------------
+Función: desenfoque, con ../input/imagen_1.bmp
+Localidades totales leídas: 4000000
+Localidades totales escritas: 4000000
+-------------------------------------
+Función: desenfoque, con ../input/imagen_1.bmp
+Localidades totales leídas: 4000000
+Localidades totales escritas: 4000000
+-------------------------------------
+Función: desenfoque, con ../input/imagen_2.bmp
+Localidades totales leídas: 1500000
+Localidades totales escritas: 1500000
+-------------------------------------
+Función: desenfoque, con ../input/imagen_2.bmp
+Localidades totales leídas: 1500000
+Localidades totales escritas: 1500000
+-------------------------------------
+Función: desenfoque, con ../input/imagen_3.bmp
+Localidades totales leídas: 3686400
+Localidades totales escritas: 3686400
+-------------------------------------
+Función: desenfoque, con ../input/imagen_3.bmp
+Localidades totales leídas: 3686400
+Localidades totales escritas: 3686400
+-------------------------------------
+Función: desenfoque, con ../input/imagen_1.bmp
+Localidades totales leídas: 4000000
+Localidades totales escritas: 4000000
+-------------------------------------
+Función: desenfoque, con ../input/imagen_1.bmp
+Localidades totales leídas: 4000000
+Localidades totales escritas: 4000000
+-------------------------------------

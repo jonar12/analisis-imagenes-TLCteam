@@ -1,1 +1,0 @@
-// inversion_horizontal_gris.c
