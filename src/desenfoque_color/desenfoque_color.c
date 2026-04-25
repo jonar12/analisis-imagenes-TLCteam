@@ -1,1 +1,0 @@
-// desenfoque_color.c

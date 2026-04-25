@@ -1,0 +1,17 @@
+# macOS
+.DS_Store
+
+# Compiled binaries and debug symbols (project-specific)
+threads/main_threads
+threads/*.dSYM/
+
+# Runtime logs
+threads/output_log.txt
+
+# Generated output images
+img/*
+!img/.gitkeep
+
+# Keep input images versioned
+!input/
+!input/**
