@@ -12,12 +12,13 @@ async def img_processor(images: list[UploadFile] = File(...), options: str = For
     try:
         # Parse options
         opts = json.loads(options)
+        print("Received options:", opts)  # Debug: print parsed options
 
         # Save uploaded images to a temporary directory
-        input_dir = "./input"
-        os.makedirs(input_dir, exist_ok=True)
+        input_dir = Path(__file__).parent.parent.parent / "input"
+        input_dir.mkdir(parents=True, exist_ok=True)
         for i, img in enumerate(images, start=1):
-            dest = f"{input_dir}/imagen_{i}.bmp"
+            dest = input_dir / f"imagen_{i}.bmp"
             with open(dest, "wb") as buffer:
                 shutil.copyfileobj(img.file, buffer)
         
@@ -32,7 +33,7 @@ async def img_processor(images: list[UploadFile] = File(...), options: str = For
         # Define the flags in the same order as expected by the C program
         flags = ["grey_v", "grey_h", "color_v", "color_h", "blur_grey", "blur_color"]
 
-        # Prepare arguments
+        # Prepare arguments matching C: n_images, grey_v, grey_h, color_v, color_h, kernel_grey, kernel_color, input_dir
         args = [
             str(len(images)),
             *(str(int(opts.get(f, False))) for f in flags),
@@ -40,14 +41,19 @@ async def img_processor(images: list[UploadFile] = File(...), options: str = For
             str(opts.get("kernel_color", 0)),
             str(input_dir.resolve()),
         ]
+        print("Running binary with args:", args)  # Debug: print arguments for the binary
 
         # Run the compiled binary
-        run_result = subprocess.run([str(BINARY_PATH), *args], capture_output=True, text=True, check=True)
+        run_result = subprocess.run([str(BINARY_PATH), *args], capture_output=True, text=True, check=True, cwd=C_COMPILER_DIR)
+
+        # Delete the temporary input directory after processing
+        shutil.rmtree(input_dir)
 
         return {
             "message": "Images were uploaded successfully",
             "output": {
-                "execution_time": run_result.stdout,  # You can modify the C code to print execution time and capture it here
+                "execution_time": run_result.stdout,
+                "path": Path(__file__).parent.parent.parent / "img"
             }
         }
                 
