@@ -1,6 +1,11 @@
 # Análisis de Imágenes con OpenMP
 
-
+## Contribuidores
+- Jonathan Armando Arredondo Hernandez | A01737788
+- Fernando Maggi Llerandi | A01736935
+- Diego Javier Solorzano Trinidad | A01808035
+- Rusbel Alejandro Morales Mendez | A01737814
+- Pablo Andre Coca Murillo | A01737438
 
 ## Descripción
 Este proyecto realiza procesamiento de imágenes en formato BMP utilizando paralelización con OpenMP en C. El objetivo principal es aplicar múltiples filtros (desenfoque e inversión) a un conjunto de imágenes de manera concurrente, optimizando y reduciendo significativamente el tiempo de ejecución.
