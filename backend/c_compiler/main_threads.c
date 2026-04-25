@@ -20,9 +20,11 @@ int main(int argc, char *argv[]) {
     int grey_h = atoi(argv[3]);
     int color_v = atoi(argv[4]);
     int color_h = atoi(argv[5]);
-    int kernel_grey = atoi(argv[6]);
-    int kernel_color = atoi(argv[7]);
-    char *input_dir = argv[8];
+    int blur_grey = atoi(argv[6]);
+    int blur_color = atoi(argv[7]);
+    int kernel_grey = atoi(argv[8]);
+    int kernel_color = atoi(argv[9]);
+    char *input_dir = argv[10];
 
     #ifdef _WIN32
         _mkdir("../img");
@@ -30,13 +32,12 @@ int main(int argc, char *argv[]) {
         mkdir("../img", 0777);
     #endif
 
+    double total_start_time = omp_get_wtime();
+
     int num_threads_arr[] = {6, 12, 18};
     for (int t = 0; t < 3; t++) {
         int current_threads = num_threads_arr[t];
-        double start_time, end_time;
         omp_set_num_threads(current_threads);
-
-        start_time = omp_get_wtime();
 
         #pragma omp parallel
         {
@@ -70,22 +71,21 @@ int main(int argc, char *argv[]) {
                         #pragma omp task firstprivate(input, out_ch)
                         inv_img_color_horizontal(out_ch, input);
                     }
-                    if (kernel_grey > 0) {
+                    if (blur_grey) {
                         #pragma omp task firstprivate(input, out_dg)
                         desenfoque_grey(input, out_dg, kernel_grey);
                     }
-                    if (kernel_color > 0) {
+                    if (blur_color) {
                         #pragma omp task firstprivate(input, out_dc)
                         desenfoque_color(input, out_dc, kernel_color);
                     }
                 }
             }
         }
-
-        end_time = omp_get_wtime();
-        printf("Threads utilizados: %d\n", current_threads);
-        printf("Tiempo de ejecucion: %.6f segundos\n", end_time - start_time);
     }
+
+    double total_end_time = omp_get_wtime();
+    printf("%.6f", total_end_time - total_start_time);
 
     return 0;
 }

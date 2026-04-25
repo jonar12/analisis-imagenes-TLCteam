@@ -104,21 +104,6 @@ extern void desenfoque_grey(const char* input_path, const char* name_output, int
         free(output_rows[i]);
     }
 
-    // Escritura en archivo de registro
-    FILE *outputLog = fopen("output_log.txt", "a");
-    if (outputLog == NULL) {
-        fprintf(stderr, "Error: No se pudo crear o abrir el archivo de registro.\n");
-        fclose(image);
-        fclose(outputImage);
-        return;
-    }
-
-    fprintf(outputLog, "Función: desenfoque, con %s\n", input_path);
-    fprintf(outputLog, "Localidades totales leídas: %d\n", width * height);
-    fprintf(outputLog, "Localidades totales escritas: %d\n", width * height);
-    fprintf(outputLog, "-------------------------------------\n");
-    fclose(outputLog);
-
     free(input_rows);
     free(temp_rows);
     free(output_rows);
@@ -224,21 +209,6 @@ extern void desenfoque_color(const char* input_path, const char* name_output, in
         free(temp_rows[i]);
         free(output_rows[i]);
     }
-
-    // Escritura en archivo de registro
-    FILE *outputLog = fopen("output_log.txt", "a");
-    if (outputLog == NULL) {
-        fprintf(stderr, "Error: No se pudo crear o abrir el archivo de registro.\n");
-        fclose(image);
-        fclose(outputImage);
-        return;
-    }
-
-    fprintf(outputLog, "Función: desenfoque, con %s\n", input_path);
-    fprintf(outputLog, "Localidades totales leídas: %d\n", width * height);
-    fprintf(outputLog, "Localidades totales escritas: %d\n", width * height);
-    fprintf(outputLog, "-------------------------------------\n");
-    fclose(outputLog);
 
     free(input_rows);
     free(temp_rows);
