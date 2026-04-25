@@ -26,9 +26,16 @@ async def img_processor(images: list[UploadFile] = File(...), options: str = For
         BINARY_PATH = C_COMPILER_DIR / BINARY_NAME
 
         # Compile the C code
-        subprocess.run([
-            "gcc", "-fopenmp", "main_threads.c", "-o", str(BINARY_PATH)
-        ], cwd=C_COMPILER_DIR, check=True)
+        if sys.platform == "darwin":
+            compile_cmd = [
+                "clang", "-Xclang", "-fopenmp",
+                "-L/opt/homebrew/opt/libomp/lib",
+                "-I/opt/homebrew/opt/libomp/include",
+                "-lomp", "main_threads.c", "-o", str(BINARY_PATH)
+            ]
+        else:
+            compile_cmd = ["gcc", "-fopenmp", "main_threads.c", "-o", str(BINARY_PATH)]
+        subprocess.run(compile_cmd, cwd=C_COMPILER_DIR, check=True)
 
         # Define the flags in the same order as expected by the C program
         flags = ["grey_v", "grey_h", "color_v", "color_h", "blur_grey", "blur_color"]
