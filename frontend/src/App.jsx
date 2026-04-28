@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { Fragment, useMemo, useRef, useState } from "react";
 import {
   Activity,
   AlertCircle,
@@ -322,13 +322,22 @@ function App() {
               <RefreshCw size={18} aria-hidden="true" />
               Limpiar
             </button>
-            <button className="primary-button" type="submit" disabled={status === "running"}>
+            <button 
+              className="primary-button" 
+              type="submit" disabled={status === "running"} 
+              style={{ color: status === "running" ? "#9ca3af": undefined}}
+            >
               {status === "running" ? (
-                <Loader2 className="spin" size={18} aria-hidden="true" />
+                <>
+                  <Loader2 className="spin" size={18} aria-hidden="true" />
+                 Procesando
+                </>
               ) : (
+                <>
                 <Play size={18} aria-hidden="true" />
+                  Procesar
+                </>
               )}
-              Procesar
             </button>
           </div>
         </form>
