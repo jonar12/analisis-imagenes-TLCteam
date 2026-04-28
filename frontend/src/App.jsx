@@ -30,8 +30,8 @@ const TRANSFORMATIONS = [
   { key: "grey_h", label: "Gris horizontal", accent: "teal" },
   { key: "color_v", label: "Color vertical", accent: "coral" },
   { key: "color_h", label: "Color horizontal", accent: "coral" },
-  { key: "blur_grey", label: "Blur gris", accent: "amber" },
-  { key: "blur_color", label: "Blur color", accent: "amber" },
+  { key: "blur_grey", label: "Desenfoque gris", accent: "amber" },
+  { key: "blur_color", label: "Desenfoque color", accent: "amber" },
 ];
 
 const initialTransforms = TRANSFORMATIONS.reduce(
@@ -181,7 +181,7 @@ function App() {
     setError("");
 
     if (files.length === 0) {
-      setError("Agrega al menos una imagen BMP");
+      setError("Agrega al menos una imagen de tipo BMP");
       return;
     }
 
@@ -376,7 +376,7 @@ function App() {
                 <button
                   key={option}
                   type="button"
-                  className={threads === option ? "active" : ""}
+                  className={threads === option || threadMode === THREAD_MODES.compare ? "active" : ""}
                   disabled={threadMode === THREAD_MODES.compare}
                   onClick={() => setThreads(option)}
                 >
@@ -457,7 +457,7 @@ function App() {
               {status === "running" ? (
                 <>
                   <Loader2 className="spin" size={18} aria-hidden="true" />
-                  {activeThread ? `Procesando ${activeThread}` : "Procesando"}
+                  Procesando
                 </>
               ) : (
                 <>
@@ -485,7 +485,15 @@ function App() {
             </div>
             <TimeChart history={history} />
           </section>
-
+          {lastRun?.outputPath && (
+            <section className="section-block output-path">
+              <div className="section-heading">
+                <FolderOpen size={20} aria-hidden="true" />
+                <h2>Salida</h2>
+              </div>
+              <code>{lastRun.outputPath}</code>
+            </section>
+          )}
           {lastRun?.outputImages?.length > 0 && (
             <section className="section-block">
               <div className="section-heading">
@@ -517,16 +525,6 @@ function App() {
                   </figure>
                 ))}
               </div>
-            </section>
-          )}
-
-          {lastRun?.outputPath && (
-            <section className="section-block output-path">
-              <div className="section-heading">
-                <FolderOpen size={20} aria-hidden="true" />
-                <h2>Salida</h2>
-              </div>
-              <code>{lastRun.outputPath}</code>
             </section>
           )}
         </aside>
@@ -571,16 +569,6 @@ function Metrics({ run }) {
         <span>Transformaciones</span>
         <strong>{run.transformations.join(", ")}</strong>
       </div>
-      {run.comparison && (
-        <div className="comparison-table">
-          {run.comparison.map((item) => (
-            <div key={item.id}>
-              <strong>{item.threads} hilos</strong>
-              <span>{item.executionTime.toFixed(6)} s</span>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

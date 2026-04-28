@@ -43,7 +43,7 @@ button {
 }
 
 button:disabled {
-  cursor: wait;
+  cursor: not-allowed;
 }
 
 .app-shell {
