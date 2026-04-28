@@ -55,18 +55,26 @@ button:disabled {
 .topbar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 14px;
   margin-bottom: 24px;
 }
 
-.brand-mark {
-  display: grid;
-  width: 44px;
-  height: 44px;
-  place-items: center;
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 250px;
+}
+
+.tec-logo {
+  width: 138px;
+  height: auto;
+  object-fit: contain;
   border-radius: 8px;
-  background: var(--ink);
-  color: #fff;
+  background: #fff;
+  padding: 8px;
+  border: 1px solid var(--line);
 }
 
 .topbar h1 {
@@ -80,6 +88,37 @@ button:disabled {
   margin: 5px 0 0;
   color: var(--muted);
   font-size: 14px;
+}
+
+.team-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(118px, 1fr));
+  gap: 8px;
+  max-width: 680px;
+}
+
+.team-member {
+  display: grid;
+  gap: 4px;
+  min-height: 58px;
+  align-content: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 8px 10px;
+}
+
+.team-member span {
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.team-member strong {
+  color: var(--blue);
+  font-size: 12px;
+  line-height: 1.1;
 }
 
 .workspace {
@@ -230,7 +269,15 @@ button:disabled {
   border-radius: 8px;
 }
 
-.segmented-control button {
+.mode-control {
+  display: grid;
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.segmented-control button,
+.mode-control button {
   min-height: 46px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -239,10 +286,43 @@ button:disabled {
   font-weight: 800;
 }
 
-.segmented-control button.active {
+.segmented-control button.active,
+.mode-control button.active {
   border-color: var(--blue);
   background: #e4edf8;
   color: #174675;
+}
+
+.segmented-control.disabled {
+  opacity: 0.58;
+}
+
+.mini-button {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.mini-button:hover {
+  background: #eef3f6;
+}
+
+.mini-button:disabled {
+  opacity: 0.62;
+}
+
+.download-action {
+  margin-left: 0;
 }
 
 .transform-grid {
@@ -430,6 +510,34 @@ button:disabled {
   line-height: 1.45;
 }
 
+.comparison-table {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 8px;
+}
+
+.comparison-table div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 0 12px;
+}
+
+.comparison-table strong {
+  font-size: 13px;
+}
+
+.comparison-table span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 900;
+}
+
 .bar-chart {
   display: grid;
   gap: 12px;
@@ -477,6 +585,60 @@ button:disabled {
   text-align: right;
 }
 
+.output-gallery {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  max-height: 620px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.output-image-card {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 10px;
+}
+
+.output-image-card img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  border-radius: 6px;
+  background:
+    linear-gradient(45deg, #edf1f4 25%, transparent 25%),
+    linear-gradient(-45deg, #edf1f4 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #edf1f4 75%),
+    linear-gradient(-45deg, transparent 75%, #edf1f4 75%),
+    #fff;
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0;
+  background-size: 16px 16px;
+}
+
+.output-image-card figcaption {
+  display: grid;
+  gap: 3px;
+}
+
+.output-image-card figcaption strong {
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.output-image-card figcaption span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .output-path code {
   display: block;
   overflow-wrap: anywhere;
@@ -494,6 +656,15 @@ button:disabled {
 }
 
 @media (max-width: 920px) {
+  .topbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .team-strip {
+    max-width: none;
+  }
+
   .workspace {
     grid-template-columns: 1fr;
   }
@@ -513,18 +684,38 @@ button:disabled {
     font-size: 22px;
   }
 
+  .brand-lockup {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .tec-logo {
+    width: min(220px, 100%);
+  }
+
+  .team-strip {
+    grid-template-columns: 1fr;
+  }
+
   .section-block {
     padding: 14px;
+  }
+
+  .section-heading {
+    flex-wrap: wrap;
   }
 
   .file-list,
   .transform-grid,
   .kernel-row,
-  .metrics-grid {
+  .metrics-grid,
+  .mode-control,
+  .output-gallery {
     grid-template-columns: 1fr;
   }
 
-  .metric-wide {
+  .metric-wide,
+  .comparison-table {
     grid-column: auto;
   }
 

@@ -1,11 +1,11 @@
-import React, { Fragment, useMemo, useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
-  Activity,
   AlertCircle,
   BarChart3,
   Check,
   Clock3,
   Cpu,
+  Download,
   FolderOpen,
   Image,
   Loader2,
@@ -15,10 +15,15 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import tecLogo from "./assets/tec.png";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000/img/compiler";
 const MAX_FILES = 10;
 const THREAD_OPTIONS = [6, 12, 18];
+const THREAD_MODES = {
+  single: "single",
+  compare: "compare",
+};
 
 const TRANSFORMATIONS = [
   { key: "grey_v", label: "Gris vertical", accent: "teal" },
@@ -33,15 +38,25 @@ const initialTransforms = TRANSFORMATIONS.reduce(
   (acc, item) => ({ ...acc, [item.key]: false }),
   {},
 );
+const TEAM_MEMBERS = [
+  { name: "Jonathan Armando Arredondo Hernandez", id: "A01737788" },
+  { name: "Diego Javier Solórzano Trinidad", id: "A01808035" },
+  { name: "Rusbel Alejandro Morales Méndez", id: "A01737814" },
+  { name: "Pablo Andre Coca Murillo", id: "A01737438" },
+  { name: "Fernando Maggi Llerandi", id: "A01736935" },
+];
 
 function App() {
   const fileInputRef = useRef(null);
   const [files, setFiles] = useState([]);
   const [threads, setThreads] = useState(6);
+  const [threadMode, setThreadMode] = useState(THREAD_MODES.single);
   const [transforms, setTransforms] = useState(initialTransforms);
   const [kernelGrey, setKernelGrey] = useState(3);
   const [kernelColor, setKernelColor] = useState(5);
   const [status, setStatus] = useState("idle");
+  const [activeThread, setActiveThread] = useState(null);
+  const [downloadStatus, setDownloadStatus] = useState("idle");
   const [error, setError] = useState("");
   const [lastRun, setLastRun] = useState(null);
   const [history, setHistory] = useState([]);
@@ -50,6 +65,7 @@ function App() {
     () => TRANSFORMATIONS.filter((item) => transforms[item.key]),
     [transforms],
   );
+  const allTransformsSelected = selectedTransforms.length === TRANSFORMATIONS.length;
 
   const totalSize = useMemo(
     () => files.reduce((sum, file) => sum + file.size, 0),
@@ -91,10 +107,73 @@ function App() {
     setTransforms((current) => ({ ...current, [key]: !current[key] }));
   }
 
+  function toggleAllTransforms() {
+    const shouldSelect = !allTransformsSelected;
+    setTransforms(
+      TRANSFORMATIONS.reduce(
+        (acc, item) => ({ ...acc, [item.key]: shouldSelect }),
+        {},
+      ),
+    );
+  }
+
   function normalizeKernel(value, fallback) {
     const parsed = Number(value);
     if (!Number.isFinite(parsed) || parsed < 1) return fallback;
     return parsed % 2 === 0 ? parsed + 1 : parsed;
+  }
+
+  function createOptions(threadCount) {
+    const options = {
+      ...transforms,
+      threads: threadCount,
+      kernel_grey: normalizeKernel(kernelGrey, 3),
+      kernel_color: normalizeKernel(kernelColor, 5),
+    };
+
+    return options;
+  }
+
+  async function runCompiler(threadCount, selectedLabels) {
+    const options = createOptions(threadCount);
+    const body = new FormData();
+    files.forEach((file) => body.append("images", file));
+    body.append("options", JSON.stringify(options));
+
+    const clientStart = performance.now();
+    const response = await fetch(API_URL, {
+      method: "POST",
+      body,
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(readApiError(data));
+    }
+
+    const clientSeconds = (performance.now() - clientStart) / 1000;
+    const executionTime = Number(
+      data?.metrics?.execution_time_seconds ??
+        data?.output?.execution_time_seconds ??
+        data?.output?.execution_time,
+    );
+    const runId = `${Date.now()}-${threadCount}`;
+
+    return {
+      id: runId,
+      images: files.length,
+      threads: threadCount,
+      transformations: selectedLabels,
+      kernelGrey: options.kernel_grey,
+      kernelColor: options.kernel_color,
+      executionTime: Number.isFinite(executionTime) ? executionTime : 0,
+      clientSeconds,
+      outputPath: data?.output?.path ?? "",
+      outputImages: (data?.output?.images ?? []).map((image, index) => ({
+        ...image,
+        url: resolveOutputUrl(image.url, `${runId}-${index}`),
+      })),
+    };
   }
 
   async function processImages(event) {
@@ -111,56 +190,68 @@ function App() {
       return;
     }
 
-    const options = {
-      ...transforms,
-      threads,
-      kernel_grey: normalizeKernel(kernelGrey, 3),
-      kernel_color: normalizeKernel(kernelColor, 5),
-    };
-
-    const body = new FormData();
-    files.forEach((file) => body.append("images", file));
-    body.append("options", JSON.stringify(options));
+    const threadList = threadMode === THREAD_MODES.compare ? THREAD_OPTIONS : [threads];
+    const selectedLabels = selectedTransforms.map((item) => item.label);
 
     setStatus("running");
-    const clientStart = performance.now();
+    setActiveThread(threadList[0]);
 
     try {
-      const response = await fetch(API_URL, {
-        method: "POST",
-        body,
-      });
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(readApiError(data));
+      const runs = [];
+      for (const threadCount of threadList) {
+        setActiveThread(threadCount);
+        const run = await runCompiler(threadCount, selectedLabels);
+        runs.push(run);
       }
 
-      const clientSeconds = (performance.now() - clientStart) / 1000;
-      const executionTime = Number(
-        data?.metrics?.execution_time_seconds ??
-          data?.output?.execution_time_seconds ??
-          data?.output?.execution_time,
-      );
-
-      const run = {
-        id: `${Date.now()}-${threads}`,
-        images: files.length,
-        threads,
-        transformations: selectedTransforms.map((item) => item.label),
-        kernelGrey: options.kernel_grey,
-        kernelColor: options.kernel_color,
-        executionTime: Number.isFinite(executionTime) ? executionTime : 0,
-        clientSeconds,
-        outputPath: data?.output?.path ?? "",
-      };
-
-      setLastRun(run);
-      setHistory((current) => [...current, run].slice(-8));
+      const nextRun = threadMode === THREAD_MODES.compare ? createComparisonRun(runs) : runs[0];
+      setLastRun(nextRun);
+      setHistory((current) => [...current, ...runs].slice(-12));
       setStatus("done");
     } catch (apiError) {
       setError(apiError.message || "No se pudo procesar la corrida");
       setStatus("idle");
+    } finally {
+      setActiveThread(null);
+    }
+  }
+
+  async function downloadResults() {
+    if (!lastRun?.outputImages?.length) {
+      setError("No hay imagenes producidas para descargar");
+      return;
+    }
+
+    setError("");
+    setDownloadStatus("running");
+
+    try {
+      const response = await fetch(resolveBackendUrl("/img/download-results"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(lastRun.outputImages.map((image) => image.filename)),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(readApiError(data));
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `resultados_tlc_${Date.now()}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setDownloadStatus("done");
+    } catch (apiError) {
+      setError(apiError.message || "No se pudo descargar el resultado");
+      setDownloadStatus("idle");
     }
   }
 
@@ -168,9 +259,12 @@ function App() {
     setFiles([]);
     setTransforms(initialTransforms);
     setThreads(6);
+    setThreadMode(THREAD_MODES.single);
     setKernelGrey(3);
     setKernelColor(5);
     setError("");
+    setActiveThread(null);
+    setDownloadStatus("idle");
     setLastRun(null);
     setStatus("idle");
   }
@@ -178,12 +272,21 @@ function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="brand-mark">
-          <Activity size={22} aria-hidden="true" />
+        <div className="brand-lockup">
+          <img className="tec-logo" src={tecLogo} alt="Tecnologico de Monterrey" />
+          <div>
+            <h1>TLC Image Lab</h1>
+            <p>Procesamiento BMP con OpenMP</p>
+          </div>
         </div>
-        <div>
-          <h1>TLC Image Lab</h1>
-          <p>Procesamiento BMP con OpenMP</p>
+
+        <div className="team-strip" aria-label="Integrantes">
+          {TEAM_MEMBERS.map((member) => (
+            <div className="team-member" key={member.id}>
+              <span>{member.name}</span>
+              <strong>{member.id}</strong>
+            </div>
+          ))}
         </div>
       </header>
 
@@ -248,12 +351,33 @@ function App() {
               <Cpu size={20} aria-hidden="true" />
               <h2>Hilos</h2>
             </div>
-            <div className="segmented-control" role="group" aria-label="Cantidad de hilos">
+            <div className="mode-control" role="group" aria-label="Modo de ejecucion">
+              <button
+                type="button"
+                className={threadMode === THREAD_MODES.single ? "active" : ""}
+                onClick={() => setThreadMode(THREAD_MODES.single)}
+              >
+                Un valor
+              </button>
+              <button
+                type="button"
+                className={threadMode === THREAD_MODES.compare ? "active" : ""}
+                onClick={() => setThreadMode(THREAD_MODES.compare)}
+              >
+                Comparar 6/12/18
+              </button>
+            </div>
+            <div
+              className={`segmented-control ${threadMode === THREAD_MODES.compare ? "disabled" : ""}`}
+              role="group"
+              aria-label="Cantidad de hilos"
+            >
               {THREAD_OPTIONS.map((option) => (
                 <button
                   key={option}
                   type="button"
                   className={threads === option ? "active" : ""}
+                  disabled={threadMode === THREAD_MODES.compare}
                   onClick={() => setThreads(option)}
                 >
                   {option}
@@ -266,6 +390,9 @@ function App() {
             <div className="section-heading">
               <SlidersHorizontal size={20} aria-hidden="true" />
               <h2>Transformaciones</h2>
+              <button className="mini-button" type="button" onClick={toggleAllTransforms}>
+                {allTransformsSelected ? "Quitar todas" : "Todas"}
+              </button>
             </div>
             <div className="transform-grid">
               {TRANSFORMATIONS.map((item) => (
@@ -330,12 +457,12 @@ function App() {
               {status === "running" ? (
                 <>
                   <Loader2 className="spin" size={18} aria-hidden="true" />
-                 Procesando
+                  {activeThread ? `Procesando ${activeThread}` : "Procesando"}
                 </>
               ) : (
                 <>
                 <Play size={18} aria-hidden="true" />
-                  Procesar
+                  {threadMode === THREAD_MODES.compare ? "Comparar" : "Procesar"}
                 </>
               )}
             </button>
@@ -358,6 +485,40 @@ function App() {
             </div>
             <TimeChart history={history} />
           </section>
+
+          {lastRun?.outputImages?.length > 0 && (
+            <section className="section-block">
+              <div className="section-heading">
+                <Image size={20} aria-hidden="true" />
+                <h2>Imagenes producidas</h2>
+                <span className="counter">{lastRun.outputImages.length}</span>
+                <button
+                  className="mini-button download-action"
+                  type="button"
+                  onClick={downloadResults}
+                  disabled={downloadStatus === "running"}
+                >
+                  {downloadStatus === "running" ? (
+                    <Loader2 className="spin" size={16} aria-hidden="true" />
+                  ) : (
+                    <Download size={16} aria-hidden="true" />
+                  )}
+                  ZIP
+                </button>
+              </div>
+              <div className="output-gallery">
+                {lastRun.outputImages.map((image) => (
+                  <figure className="output-image-card" key={`${image.filename}-${image.url}`}>
+                    <img src={image.url} alt={`${image.label} imagen ${image.image_index}`} />
+                    <figcaption>
+                      <strong>{image.label}</strong>
+                      <span>Imagen {image.image_index}</span>
+                    </figcaption>
+                  </figure>
+                ))}
+              </div>
+            </section>
+          )}
 
           {lastRun?.outputPath && (
             <section className="section-block output-path">
@@ -384,12 +545,19 @@ function Metrics({ run }) {
     );
   }
 
-  const items = [
-    { label: "Tiempo C", value: `${run.executionTime.toFixed(6)} s` },
-    { label: "Total request", value: `${run.clientSeconds.toFixed(3)} s` },
-    { label: "Imagenes", value: run.images },
-    { label: "Hilos", value: run.threads },
-  ];
+  const items = run.comparison
+    ? [
+        { label: "Mejor C", value: `${run.executionTime.toFixed(6)} s` },
+        { label: "Total C", value: `${run.totalExecutionTime.toFixed(6)} s` },
+        { label: "Imagenes", value: run.images },
+        { label: "Mejor hilos", value: run.bestThread },
+      ]
+    : [
+        { label: "Tiempo C", value: `${run.executionTime.toFixed(6)} s` },
+        { label: "Total request", value: `${run.clientSeconds.toFixed(3)} s` },
+        { label: "Imagenes", value: run.images },
+        { label: "Hilos", value: run.threads },
+      ];
 
   return (
     <div className="metrics-grid">
@@ -403,6 +571,16 @@ function Metrics({ run }) {
         <span>Transformaciones</span>
         <strong>{run.transformations.join(", ")}</strong>
       </div>
+      {run.comparison && (
+        <div className="comparison-table">
+          {run.comparison.map((item) => (
+            <div key={item.id}>
+              <strong>{item.threads} hilos</strong>
+              <span>{item.executionTime.toFixed(6)} s</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -453,6 +631,37 @@ function readApiError(data) {
   if (data?.detail?.message) return data.detail.message;
   if (data?.detail?.error) return data.detail.error;
   return "La API rechazo la solicitud";
+}
+
+function createComparisonRun(runs) {
+  const bestRun = runs.reduce(
+    (best, run) => (run.executionTime < best.executionTime ? run : best),
+    runs[0],
+  );
+  const lastRun = runs[runs.length - 1];
+
+  return {
+    ...lastRun,
+    id: `comparison-${Date.now()}`,
+    threads: THREAD_OPTIONS.join(", "),
+    executionTime: bestRun.executionTime,
+    totalExecutionTime: runs.reduce((sum, run) => sum + run.executionTime, 0),
+    clientSeconds: runs.reduce((sum, run) => sum + run.clientSeconds, 0),
+    bestThread: bestRun.threads,
+    comparison: runs,
+    outputImages: lastRun.outputImages,
+  };
+}
+
+function resolveOutputUrl(url, cacheKey) {
+  const absoluteUrl = resolveBackendUrl(url);
+  const separator = absoluteUrl.includes("?") ? "&" : "?";
+  return `${absoluteUrl}${separator}v=${cacheKey}`;
+}
+
+function resolveBackendUrl(path) {
+  const base = API_URL.startsWith("http") ? API_URL : window.location.origin;
+  return new URL(path, base).href;
 }
 
 export default App;

@@ -1,10 +1,12 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Form # type: ignore
-import json, shutil, subprocess, sys
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Body # type: ignore
+from fastapi.responses import StreamingResponse # type: ignore
+import io, json, shutil, subprocess, sys, zipfile
 from pathlib import Path
 
 router = APIRouter()
 
 C_COMPILER_DIR = Path(__file__).parent.parent.parent / "c_compiler"                                            
+IMG_DIR = Path(__file__).parent.parent.parent / "img"
 BINARY_NAME = "main_threads.exe" if sys.platform == "win32" else "main_threads"                              
 ALLOWED_THREADS = {6, 12, 18}
 TRANSFORMATION_LABELS = {
@@ -15,6 +17,62 @@ TRANSFORMATION_LABELS = {
     "blur_grey": "Blur en escala de grises",
     "blur_color": "Blur en color",
 }
+OUTPUT_PATTERNS = {
+    "grey_v": "img{index}_gris_vertical.bmp",
+    "grey_h": "img{index}_gris_horizontal.bmp",
+    "color_v": "img{index}_color_vertical.bmp",
+    "color_h": "img{index}_color_horizontal.bmp",
+    "blur_grey": "img{index}_desenfoque_grey.bmp",
+    "blur_color": "img{index}_desenfoque_color.bmp",
+}
+
+def expected_output_images(n_images: int, opts: dict):
+    images = []
+    for index in range(1, n_images + 1):
+        for flag, filename_pattern in OUTPUT_PATTERNS.items():
+            if opts.get(flag, False):
+                filename = filename_pattern.format(index=index)
+                images.append({
+                    "filename": filename,
+                    "image_index": index,
+                    "transformation": flag,
+                    "label": TRANSFORMATION_LABELS[flag],
+                })
+    return images
+
+@router.post("/download-results")
+async def download_results(filenames: list[str] = Body(...)):
+    try:
+        if not filenames:
+            raise HTTPException(status_code=400, detail="No hay archivos para descargar")
+
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zip_file:
+            for filename in filenames:
+                safe_name = Path(filename).name
+                if safe_name != filename or not safe_name.lower().endswith(".bmp"):
+                    raise HTTPException(status_code=400, detail=f"Archivo invalido: {filename}")
+
+                file_path = IMG_DIR / safe_name
+                if not file_path.exists():
+                    raise HTTPException(status_code=404, detail=f"No existe: {safe_name}")
+
+                zip_file.write(file_path, arcname=safe_name)
+
+        buffer.seek(0)
+        headers = {"Content-Disposition": 'attachment; filename="resultados_tlc.zip"'}
+        return StreamingResponse(buffer, media_type="application/zip", headers=headers)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Error creating download",
+                "message": str(e),
+            },
+        )
 
 @router.post("/compiler")
 async def img_processor(images: list[UploadFile] = File(...), options: str = Form(...)): # JSON como string
@@ -42,6 +100,8 @@ async def img_processor(images: list[UploadFile] = File(...), options: str = For
 
         # Save uploaded images to a temporary directory
         input_dir = Path(__file__).parent.parent.parent / "input"
+        if input_dir.exists():
+            shutil.rmtree(input_dir)
         input_dir.mkdir(parents=True, exist_ok=True)
         for i, img in enumerate(images, start=1):
             dest = input_dir / f"imagen_{i}.bmp"
@@ -68,6 +128,12 @@ async def img_processor(images: list[UploadFile] = File(...), options: str = For
         selected_transformations = [
             TRANSFORMATION_LABELS[flag] for flag in flags if opts.get(flag, False)
         ]
+        expected_images = expected_output_images(len(images), opts)
+        IMG_DIR.mkdir(parents=True, exist_ok=True)
+        for output_image in expected_images:
+            output_path = IMG_DIR / output_image["filename"]
+            if output_path.exists():
+                output_path.unlink()
 
         # Prepare arguments matching C: n_images, flags, kernels, threads, input_dir
         args = [
@@ -84,6 +150,15 @@ async def img_processor(images: list[UploadFile] = File(...), options: str = For
         run_result = subprocess.run([str(BINARY_PATH), *args], capture_output=True, text=True, check=True, cwd=C_COMPILER_DIR)
         raw_execution_time = run_result.stdout.strip()
         execution_time = float(raw_execution_time.splitlines()[-1]) if raw_execution_time else 0
+        output_images = []
+        for output_image in expected_images:
+            output_path = IMG_DIR / output_image["filename"]
+            if output_path.exists():
+                output_images.append({
+                    **output_image,
+                    "url": f"/processed/{output_image['filename']}",
+                    "size": output_path.stat().st_size,
+                })
 
         # Delete the temporary input directory after processing
         shutil.rmtree(input_dir)
@@ -93,7 +168,8 @@ async def img_processor(images: list[UploadFile] = File(...), options: str = For
             "output": {
                 "execution_time": raw_execution_time,
                 "execution_time_seconds": execution_time,
-                "path": str((Path(__file__).parent.parent.parent / "img").resolve()),
+                "path": str(IMG_DIR.resolve()),
+                "images": output_images,
             },
             "metrics": {
                 "images": len(images),
