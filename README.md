@@ -50,3 +50,28 @@ chmod +x run_transform run_transform.sh
 - La interfaz esperada para cada binario es: `<input.bmp> <output.bmp>`.
 - Si el binario no existe, el CLI intenta compilar automaticamente.
 - Si tus archivos `.c` aun no tienen implementacion (`main`), la compilacion/ejecucion fallara hasta completarlos.
+
+## Levantar el monorepo (backend + frontend)
+
+Scripts en `scripts/` que activan el venv del backend, lanzan `fastapi dev` y `npm run dev` en paralelo.
+
+- `scripts/dev.ps1` -> Windows PowerShell
+- `scripts/dev.sh`  -> macOS/Linux (y Git Bash en Windows)
+
+> Requisito: el venv del backend y `node_modules` del frontend deben estar instalados previamente.
+
+Uso:
+
+```powershell
+# Windows
+./scripts/dev.ps1
+```
+
+```bash
+# macOS/Linux
+./scripts/dev.sh
+```
+
+- Backend  -> http://127.0.0.1:8000
+- Frontend -> http://127.0.0.1:5173
+- `Ctrl+C` detiene ambos procesos.
