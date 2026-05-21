@@ -1,28 +1,32 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Body # type: ignore
 from fastapi.responses import StreamingResponse # type: ignore
-import io, json, shutil, subprocess, sys, zipfile
+import io, json, os, re, shutil, subprocess, sys, zipfile
 from pathlib import Path
 
 router = APIRouter()
 
 C_COMPILER_DIR = Path(__file__).parent.parent.parent / "c_compiler"                                            
 IMG_DIR = Path(__file__).parent.parent.parent / "img"
-BINARY_NAME = "main_threads.exe" if sys.platform == "win32" else "main_threads"                              
+BINARY_NAME = "main_mpi.exe" if sys.platform == "win32" else "main_mpi"                              
 ALLOWED_THREADS = {6, 12, 18}
+
+# Configuracion del cluster MPI
+
+# HOSTFILE: archivo con la lista de nodos del cluster.
+HOSTFILE = Path("/home/mpiuser/cloud/my_host")
+# MPI_PROCESSES: fallback local cuando no hay cluster. Default 1 para no saturar la maquina del master y OpenMP paraleliza dentro del unico rank.
+MPI_PROCESSES = "1"
+
 TRANSFORMATION_LABELS = {
-    "grey_v": "Escala de grises vertical",
     "grey_h": "Escala de grises horizontal",
     "color_v": "Color vertical",
     "color_h": "Color horizontal",
-    "blur_grey": "Blur en escala de grises",
     "blur_color": "Blur en color",
 }
 OUTPUT_PATTERNS = {
-    "grey_v": "img{index}_gris_vertical.bmp",
     "grey_h": "img{index}_gris_horizontal.bmp",
     "color_v": "img{index}_color_vertical.bmp",
     "color_h": "img{index}_color_horizontal.bmp",
-    "blur_grey": "img{index}_desenfoque_grey.bmp",
     "blur_color": "img{index}_desenfoque_color.bmp",
 }
 
@@ -76,10 +80,11 @@ async def download_results(filenames: list[str] = Body(...)):
 
 @router.post("/compiler")
 async def img_processor(images: list[UploadFile] = File(...), options: str = Form(...)): # JSON como string
+    input_dir = None
     try:
         # Parse options
         opts = json.loads(options)
-        print("Received options:", opts)  # Debug: print parsed options
+        # print("Received options:", opts)  # Debug: print parsed options
 
         if len(images) > 10:
             raise HTTPException(status_code=400, detail="Solo se permiten hasta 10 imagenes BMP")
@@ -111,20 +116,32 @@ async def img_processor(images: list[UploadFile] = File(...), options: str = For
         # Define the complete path for the compiled binary
         BINARY_PATH = C_COMPILER_DIR / BINARY_NAME
 
-        # Compile the C code
+        # Compilar el binario MPI. mpicc envuelve al compilador del sistema
         if sys.platform == "darwin":
+            # En macOS el OpenMP de Homebrew necesita estos flags explicitos.
             compile_cmd = [
-                "clang", "-Xclang", "-fopenmp",
+                "mpicc", "-Xclang", "-fopenmp",
                 "-L/opt/homebrew/opt/libomp/lib",
                 "-I/opt/homebrew/opt/libomp/include",
-                "-lomp", "main_threads.c", "-o", str(BINARY_PATH)
+                "-lomp", "main_mpi.c", "-o", str(BINARY_PATH),
             ]
         else:
-            compile_cmd = ["gcc", "-fopenmp", "main_threads.c", "-o", str(BINARY_PATH)]
-        subprocess.run(compile_cmd, cwd=C_COMPILER_DIR, check=True)
+            compile_cmd = ["mpicc", "-fopenmp", "main_mpi.c", "-o", str(BINARY_PATH)]
+
+        compile_result = subprocess.run(
+            compile_cmd, cwd=C_COMPILER_DIR, capture_output=True, text=True,
+        )
+        if compile_result.returncode != 0:
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": "Error compilando el binario MPI",
+                    "message": compile_result.stderr.strip(),
+                },
+            )
 
         # Define the flags in the same order as expected by the C program
-        flags = ["grey_v", "grey_h", "color_v", "color_h", "blur_grey", "blur_color"]
+        flags = ["grey_h", "color_v", "color_h", "blur_color"]
         selected_transformations = [
             TRANSFORMATION_LABELS[flag] for flag in flags if opts.get(flag, False)
         ]
@@ -139,17 +156,47 @@ async def img_processor(images: list[UploadFile] = File(...), options: str = For
         args = [
             str(len(images)),
             *(str(int(opts.get(f, False))) for f in flags),
-            str(opts.get("kernel_grey", 0)),
             str(opts.get("kernel_color", 0)),
             str(threads),
             str(input_dir.resolve()),
         ]
-        print("Running binary with args:", args)  # Debug: print arguments for the binary
+        # print("Running binary with args:", args)  # Debug: print arguments for the binary
 
-        # Run the compiled binary
-        run_result = subprocess.run([str(BINARY_PATH), *args], capture_output=True, text=True, check=True, cwd=C_COMPILER_DIR)
-        raw_execution_time = run_result.stdout.strip()
-        execution_time = float(raw_execution_time.splitlines()[-1]) if raw_execution_time else 0
+        # Construcción del comando mpirun.
+        mpi_cmd = ["mpirun"]
+        if HOSTFILE.exists():
+            # Con hostfile: 1 proceso por maquina (-npernode 1). mpirun cuenta los nodos del archivo host
+            mpi_cmd += ["--hostfile", str(HOSTFILE), "-npernode", "1"]
+        else:
+            # Sin hostfile: corre local con MPI_PROCESSES procesos (util para pruebas locales).
+            mpi_cmd += ["-np", str(MPI_PROCESSES)]
+        mpi_cmd += [str(BINARY_PATH), *args]
+
+        run_result = subprocess.run(mpi_cmd, capture_output=True, text=True, cwd=C_COMPILER_DIR)
+        if run_result.returncode != 0:
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": "Error ejecutando el binario MPI",
+                    "message": run_result.stderr.strip() or run_result.stdout.strip(),
+                },
+            )
+
+        raw_stdout = run_result.stdout.strip()
+        # Parsea pares KEY=valor del stdout; valor acepta int, float y notacion cientifica (1.234e+08).
+        def _extract(key: str, cast=float, default=0.0):
+            match = re.search(rf"{key}=([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)", raw_stdout)
+            if not match:
+                return default
+            try:
+                return cast(match.group(1))
+            except ValueError:
+                return default
+
+        execution_time  = _extract("TIME", float)
+        total_pixels    = _extract("TOTAL_PIXELS", lambda v: int(float(v)))
+        pixels_per_sec  = _extract("PIXELS_PER_SEC", float)
+
         output_images = []
         for output_image in expected_images:
             output_path = IMG_DIR / output_image["filename"]
@@ -160,13 +207,10 @@ async def img_processor(images: list[UploadFile] = File(...), options: str = For
                     "size": output_path.stat().st_size,
                 })
 
-        # Delete the temporary input directory after processing
-        shutil.rmtree(input_dir)
-
         return {
             "message": "Images were uploaded successfully",
             "output": {
-                "execution_time": raw_execution_time,
+                "execution_time": f"{execution_time:.6f}",
                 "execution_time_seconds": execution_time,
                 "path": str(IMG_DIR.resolve()),
                 "images": output_images,
@@ -175,9 +219,10 @@ async def img_processor(images: list[UploadFile] = File(...), options: str = For
                 "images": len(images),
                 "threads": threads,
                 "transformations": selected_transformations,
-                "kernel_grey": int(opts.get("kernel_grey", 0)),
                 "kernel_color": int(opts.get("kernel_color", 0)),
                 "execution_time_seconds": execution_time,
+                "total_pixels": total_pixels,
+                "pixels_per_second": f"{pixels_per_sec:.3e}",
             },
         }
                 
@@ -191,3 +236,7 @@ async def img_processor(images: list[UploadFile] = File(...), options: str = For
                 "message": str(e)
             }
         )
+    finally:
+        # Limpiar el directorio temporal de entrada pase lo que pase.
+        if input_dir is not None and input_dir.exists():
+            shutil.rmtree(input_dir, ignore_errors=True)
