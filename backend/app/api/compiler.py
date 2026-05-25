@@ -9,6 +9,9 @@ C_COMPILER_DIR = Path(__file__).parent.parent.parent / "c_compiler"
 IMG_DIR = Path(__file__).parent.parent.parent / "img"
 BINARY_NAME = "main_mpi.exe" if sys.platform == "win32" else "main_mpi"                              
 ALLOWED_THREADS = {6, 12, 18}
+MAX_IMAGES = 250
+KERNEL_MIN = 55
+KERNEL_MAX = 155
 
 # Configuracion del cluster MPI
 
@@ -21,13 +24,13 @@ TRANSFORMATION_LABELS = {
     "grey_h": "Escala de grises horizontal",
     "color_v": "Color vertical",
     "color_h": "Color horizontal",
-    "blur_color": "Blur en color",
+    "blur_color": "Desenfoque a color",
 }
 OUTPUT_PATTERNS = {
-    "grey_h": "img{index}_gris_horizontal.bmp",
-    "color_v": "img{index}_color_vertical.bmp",
-    "color_h": "img{index}_color_horizontal.bmp",
-    "blur_color": "img{index}_desenfoque_color.bmp",
+    "grey_h": "img{index:03d}_gris_horizontal.bmp",
+    "color_v": "img{index:03d}_color_vertical.bmp",
+    "color_h": "img{index:03d}_color_horizontal.bmp",
+    "blur_color": "img{index:03d}_desenfoque_color.bmp",
 }
 
 def expected_output_images(n_images: int, opts: dict):
@@ -86,8 +89,8 @@ async def img_processor(images: list[UploadFile] = File(...), options: str = For
         opts = json.loads(options)
         # print("Received options:", opts)  # Debug: print parsed options
 
-        if len(images) > 10:
-            raise HTTPException(status_code=400, detail="Solo se permiten hasta 10 imagenes BMP")
+        if len(images) > MAX_IMAGES:
+            raise HTTPException(status_code=400, detail=f"Solo se permiten hasta {MAX_IMAGES} imagenes BMP")
 
         invalid_images = [
             img.filename for img in images
@@ -103,13 +106,22 @@ async def img_processor(images: list[UploadFile] = File(...), options: str = For
         if threads not in ALLOWED_THREADS:
             raise HTTPException(status_code=400, detail="threads debe ser 6, 12 o 18")
 
+        kernel_color = int(opts.get("kernel_color", KERNEL_MIN))
+        if opts.get("blur_color", False) and (
+            kernel_color < KERNEL_MIN or kernel_color > KERNEL_MAX or kernel_color % 2 == 0
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=f"kernel_color debe ser impar y estar entre {KERNEL_MIN} y {KERNEL_MAX}",
+            )
+
         # Save uploaded images to a temporary directory
         input_dir = Path(__file__).parent.parent.parent / "input"
         if input_dir.exists():
             shutil.rmtree(input_dir)
         input_dir.mkdir(parents=True, exist_ok=True)
         for i, img in enumerate(images, start=1):
-            dest = input_dir / f"imagen_{i}.bmp"
+            dest = input_dir / f"imagen_{i:03d}.bmp"
             with open(dest, "wb") as buffer:
                 shutil.copyfileobj(img.file, buffer)
         
@@ -145,6 +157,9 @@ async def img_processor(images: list[UploadFile] = File(...), options: str = For
         selected_transformations = [
             TRANSFORMATION_LABELS[flag] for flag in flags if opts.get(flag, False)
         ]
+        if not selected_transformations:
+            raise HTTPException(status_code=400, detail="Selecciona al menos una transformacion")
+
         expected_images = expected_output_images(len(images), opts)
         IMG_DIR.mkdir(parents=True, exist_ok=True)
         for output_image in expected_images:
@@ -156,7 +171,7 @@ async def img_processor(images: list[UploadFile] = File(...), options: str = For
         args = [
             str(len(images)),
             *(str(int(opts.get(f, False))) for f in flags),
-            str(opts.get("kernel_color", 0)),
+            str(kernel_color),
             str(threads),
             str(input_dir.resolve()),
         ]
@@ -219,7 +234,7 @@ async def img_processor(images: list[UploadFile] = File(...), options: str = For
                 "images": len(images),
                 "threads": threads,
                 "transformations": selected_transformations,
-                "kernel_color": int(opts.get("kernel_color", 0)),
+                "kernel_color": kernel_color,
                 "execution_time_seconds": execution_time,
                 "total_pixels": total_pixels,
                 "pixels_per_second": f"{pixels_per_sec:.3e}",
