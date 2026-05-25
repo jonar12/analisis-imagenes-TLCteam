@@ -10,20 +10,12 @@ API en FastAPI para procesar imagenes. Esta guia explica como preparar el entorn
 Verifica tu version:
 
 ```bash
-python --version
+python3 --version
 ```
 
 ## 1. Crear el entorno virtual
 
 Desde la carpeta `backend/`:
-
-### Windows (PowerShell o CMD)
-
-```powershell
-python -m venv venv
-```
-
-### macOS / Linux
 
 ```bash
 python3 -m venv venv
@@ -32,29 +24,6 @@ python3 -m venv venv
 Esto crea la carpeta `backend/venv/` con un Python aislado del sistema.
 
 ## 2. Activar el venv
-
-### Windows PowerShell
-
-```powershell
-.\venv\Scripts\Activate.ps1
-```
-
-> Si PowerShell bloquea la activacion, ejecuta una sola vez:
-> `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`
-
-### Windows CMD
-
-```cmd
-venv\Scripts\activate.bat
-```
-
-### Git Bash (Windows)
-
-```bash
-source venv/Scripts/activate
-```
-
-### macOS / Linux
 
 ```bash
 source venv/bin/activate
@@ -81,12 +50,10 @@ pip list
 Con el venv activado, desde `backend/`:
 
 ```bash
-fastapi dev app/main.py
+fastapi dev
 ```
 
 El servidor queda en `http://127.0.0.1:8000`.
-
-> Tambien puedes lanzar backend + frontend en paralelo con [`../scripts/dev.sh`](../scripts/dev.sh) o [`../scripts/dev.ps1`](../scripts/dev.ps1) desde la raiz del repo.
 
 ## 5. Desactivar el venv
 
