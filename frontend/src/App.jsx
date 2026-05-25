@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   BarChart3,
@@ -7,6 +7,7 @@ import {
   Cpu,
   Download,
   FolderOpen,
+  Gauge,
   Image,
   Loader2,
   Play,
@@ -18,7 +19,11 @@ import {
 import tecLogo from "./assets/tec.png";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000/img/compiler";
-const MAX_FILES = 10;
+const MAX_FILES = 250;
+const MIN_BMP_SIDE = 2000;
+const KERNEL_MIN = 55;
+const KERNEL_MAX = 155;
+const DEFAULT_PIXELS_PER_SECOND = 60_000_000;
 const THREAD_OPTIONS = [6, 12, 18];
 const THREAD_MODES = {
   single: "single",
@@ -26,18 +31,17 @@ const THREAD_MODES = {
 };
 
 const TRANSFORMATIONS = [
-  { key: "grey_v", label: "Gris vertical", accent: "teal" },
-  { key: "grey_h", label: "Gris horizontal", accent: "teal" },
-  { key: "color_v", label: "Color vertical", accent: "coral" },
+  { key: "grey_h", label: "Escala de grises horizontal", accent: "teal" },
+  { key: "color_v", label: "Color vertical", accent: "blue" },
   { key: "color_h", label: "Color horizontal", accent: "coral" },
-  { key: "blur_grey", label: "Desenfoque gris", accent: "amber" },
-  { key: "blur_color", label: "Desenfoque color", accent: "amber" },
+  { key: "blur_color", label: "Desenfoque a color", accent: "amber" },
 ];
 
 const initialTransforms = TRANSFORMATIONS.reduce(
   (acc, item) => ({ ...acc, [item.key]: false }),
   {},
 );
+
 const TEAM_MEMBERS = [
   { name: "Jonathan Armando Arredondo Hernandez", id: "A01737788" },
   { name: "Diego Javier Solórzano Trinidad", id: "A01808035" },
@@ -52,14 +56,15 @@ function App() {
   const [threads, setThreads] = useState(6);
   const [threadMode, setThreadMode] = useState(THREAD_MODES.single);
   const [transforms, setTransforms] = useState(initialTransforms);
-  const [kernelGrey, setKernelGrey] = useState(3);
-  const [kernelColor, setKernelColor] = useState(5);
+  const [kernelColor, setKernelColor] = useState(KERNEL_MIN);
   const [status, setStatus] = useState("idle");
   const [activeThread, setActiveThread] = useState(null);
   const [downloadStatus, setDownloadStatus] = useState("idle");
   const [error, setError] = useState("");
   const [lastRun, setLastRun] = useState(null);
   const [history, setHistory] = useState([]);
+  const [progressState, setProgressState] = useState(null);
+  const [progressTick, setProgressTick] = useState(0);
 
   const selectedTransforms = useMemo(
     () => TRANSFORMATIONS.filter((item) => transforms[item.key]),
@@ -68,31 +73,58 @@ function App() {
   const allTransformsSelected = selectedTransforms.length === TRANSFORMATIONS.length;
 
   const totalSize = useMemo(
-    () => files.reduce((sum, file) => sum + file.size, 0),
+    () => files.reduce((sum, entry) => sum + entry.file.size, 0),
     [files],
   );
 
-  function addFiles(fileList) {
-    const incoming = Array.from(fileList);
-    const bmpFiles = incoming.filter((file) => file.name.toLowerCase().endsWith(".bmp"));
+  const imagePixels = useMemo(
+    () => files.reduce((sum, entry) => sum + entry.pixels, 0),
+    [files],
+  );
 
-    if (bmpFiles.length !== incoming.length) {
-      setError("Solo se aceptan archivos .bmp");
-    } else {
-      setError("");
+  const workload = useMemo(
+    () => createWorkloadSummary(files, selectedTransforms, threadMode, history),
+    [files, selectedTransforms, threadMode, history],
+  );
+
+  useEffect(() => {
+    if (status !== "running") return undefined;
+
+    const interval = window.setInterval(() => {
+      setProgressTick((current) => current + 1);
+    }, 500);
+
+    return () => window.clearInterval(interval);
+  }, [status]);
+
+  async function addFiles(fileList) {
+    const incoming = Array.from(fileList ?? []);
+    if (incoming.length === 0) return;
+
+    const parsedFiles = await Promise.all(incoming.map(createBmpEntry));
+    const validEntries = parsedFiles
+      .filter((item) => item.entry)
+      .map((item) => item.entry);
+    const validationErrors = parsedFiles
+      .filter((item) => item.error)
+      .map((item) => item.error);
+
+    const known = new Set(files.map((entry) => entry.id));
+    const unique = validEntries.filter((entry) => !known.has(entry.id));
+    const availableSlots = Math.max(0, MAX_FILES - files.length);
+    const accepted = unique.slice(0, availableSlots);
+    const messages = [...validationErrors];
+
+    if (unique.length < validEntries.length) {
+      messages.push("Se omitieron archivos duplicados");
     }
 
-    setFiles((current) => {
-      const known = new Set(current.map((file) => `${file.name}-${file.size}-${file.lastModified}`));
-      const unique = bmpFiles.filter((file) => !known.has(`${file.name}-${file.size}-${file.lastModified}`));
-      const next = [...current, ...unique].slice(0, MAX_FILES);
+    if (unique.length > availableSlots) {
+      messages.push(`Maximo ${MAX_FILES} imagenes BMP por corrida`);
+    }
 
-      if (current.length + unique.length > MAX_FILES) {
-        setError(`Maximo ${MAX_FILES} imagenes BMP por corrida`);
-      }
-
-      return next;
-    });
+    setFiles((current) => [...current, ...accepted]);
+    setError(messages[0] ?? "");
 
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -117,27 +149,32 @@ function App() {
     );
   }
 
-  function normalizeKernel(value, fallback) {
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed) || parsed < 1) return fallback;
-    return parsed % 2 === 0 ? parsed + 1 : parsed;
+  function normalizeKernel(value) {
+    const parsed = Math.trunc(Number(value));
+    if (!Number.isFinite(parsed)) return KERNEL_MIN;
+
+    const clamped = Math.min(KERNEL_MAX, Math.max(KERNEL_MIN, parsed));
+    if (clamped % 2 !== 0) return clamped;
+    return clamped >= KERNEL_MAX ? KERNEL_MAX : clamped + 1;
   }
 
   function createOptions(threadCount) {
-    const options = {
-      ...transforms,
-      threads: threadCount,
-      kernel_grey: normalizeKernel(kernelGrey, 3),
-      kernel_color: normalizeKernel(kernelColor, 5),
-    };
+    const flags = TRANSFORMATIONS.reduce(
+      (acc, item) => ({ ...acc, [item.key]: Boolean(transforms[item.key]) }),
+      {},
+    );
 
-    return options;
+    return {
+      ...flags,
+      threads: threadCount,
+      kernel_color: normalizeKernel(kernelColor),
+    };
   }
 
   async function runCompiler(threadCount, selectedLabels) {
     const options = createOptions(threadCount);
     const body = new FormData();
-    files.forEach((file) => body.append("images", file));
+    files.forEach((entry) => body.append("images", entry.file));
     body.append("options", JSON.stringify(options));
 
     const clientStart = performance.now();
@@ -157,6 +194,8 @@ function App() {
         data?.output?.execution_time_seconds ??
         data?.output?.execution_time,
     );
+    const totalPixels = Number(data?.metrics?.total_pixels ?? 0);
+    const pixelsPerSecond = Number(data?.metrics?.pixels_per_second ?? 0);
     const runId = `${Date.now()}-${threadCount}`;
 
     return {
@@ -164,10 +203,12 @@ function App() {
       images: files.length,
       threads: threadCount,
       transformations: selectedLabels,
-      kernelGrey: options.kernel_grey,
       kernelColor: options.kernel_color,
+      usesBlur: Boolean(options.blur_color),
       executionTime: Number.isFinite(executionTime) ? executionTime : 0,
       clientSeconds,
+      totalPixels: Number.isFinite(totalPixels) ? totalPixels : 0,
+      pixelsPerSecond: Number.isFinite(pixelsPerSecond) ? pixelsPerSecond : 0,
       outputPath: data?.output?.path ?? "",
       outputImages: (data?.output?.images ?? []).map((image, index) => ({
         ...image,
@@ -181,7 +222,7 @@ function App() {
     setError("");
 
     if (files.length === 0) {
-      setError("Agrega al menos una imagen de tipo BMP");
+      setError("Agrega al menos una imagen BMP valida");
       return;
     }
 
@@ -195,6 +236,12 @@ function App() {
 
     setStatus("running");
     setActiveThread(threadList[0]);
+    setProgressState({
+      ...workload,
+      startedAt: performance.now(),
+      completedRuns: 0,
+      totalRuns: threadList.length,
+    });
 
     try {
       const runs = [];
@@ -202,12 +249,26 @@ function App() {
         setActiveThread(threadCount);
         const run = await runCompiler(threadCount, selectedLabels);
         runs.push(run);
+        setProgressState((current) => (
+          current
+            ? { ...current, completedRuns: runs.length }
+            : current
+        ));
       }
 
       const nextRun = threadMode === THREAD_MODES.compare ? createComparisonRun(runs) : runs[0];
       setLastRun(nextRun);
       setHistory((current) => [...current, ...runs].slice(-12));
       setStatus("done");
+      setProgressState((current) => (
+        current
+          ? {
+              ...current,
+              completedRuns: current.totalRuns,
+              finishedAt: performance.now(),
+            }
+          : current
+      ));
     } catch (apiError) {
       setError(apiError.message || "No se pudo procesar la corrida");
       setStatus("idle");
@@ -260,12 +321,13 @@ function App() {
     setTransforms(initialTransforms);
     setThreads(6);
     setThreadMode(THREAD_MODES.single);
-    setKernelGrey(3);
-    setKernelColor(5);
+    setKernelColor(KERNEL_MIN);
     setError("");
     setActiveThread(null);
     setDownloadStatus("idle");
     setLastRun(null);
+    setProgressState(null);
+    setProgressTick(0);
     setStatus("idle");
   }
 
@@ -276,7 +338,7 @@ function App() {
           <img className="tec-logo" src={tecLogo} alt="Tecnologico de Monterrey" />
           <div>
             <h1>TLC Image Lab</h1>
-            <p>Procesamiento BMP con OpenMP</p>
+            <p>Procesamiento BMP hibrido MPI + OpenMP en x86</p>
           </div>
         </div>
 
@@ -311,7 +373,11 @@ function App() {
             >
               <Upload size={26} aria-hidden="true" />
               <span>Seleccionar BMP</span>
-              <small>{formatBytes(totalSize)}</small>
+              <small>
+                {files.length > 0
+                  ? `${formatBytes(totalSize)} / ${formatPixels(imagePixels)}`
+                  : `BMP con lado mayor a ${MIN_BMP_SIDE}px`}
+              </small>
             </button>
 
             <input
@@ -325,17 +391,19 @@ function App() {
 
             {files.length > 0 && (
               <div className="file-list" aria-label="Archivos seleccionados">
-                {files.map((file, index) => (
-                  <div className="file-card" key={`${file.name}-${file.size}-${file.lastModified}`}>
+                {files.map((entry, index) => (
+                  <div className="file-card" key={entry.id}>
                     <Image size={18} aria-hidden="true" />
                     <div className="file-meta">
-                      <strong>{file.name}</strong>
-                      <span>{formatBytes(file.size)}</span>
+                      <strong>{entry.file.name}</strong>
+                      <span>
+                        {formatBytes(entry.file.size)} / {entry.width}x{entry.height}px
+                      </span>
                     </div>
                     <button
                       className="icon-button"
                       type="button"
-                      aria-label={`Quitar ${file.name}`}
+                      aria-label={`Quitar ${entry.file.name}`}
                       onClick={() => removeFile(index)}
                     >
                       <X size={18} aria-hidden="true" />
@@ -349,7 +417,7 @@ function App() {
           <section className="section-block">
             <div className="section-heading">
               <Cpu size={20} aria-hidden="true" />
-              <h2>Hilos</h2>
+              <h2>Hilos OpenMP</h2>
             </div>
             <div className="mode-control" role="group" aria-label="Modo de ejecucion">
               <button
@@ -411,30 +479,23 @@ function App() {
           </section>
 
           <section className="section-block kernel-row">
-            <label className={!transforms.blur_grey ? "disabled" : ""}>
-              <span>Kernel gris</span>
-              <input
-                type="number"
-                min="1"
-                step="2"
-                value={kernelGrey}
-                disabled={!transforms.blur_grey}
-                onChange={(event) => setKernelGrey(event.target.value)}
-                onBlur={() => setKernelGrey(normalizeKernel(kernelGrey, 3))}
-              />
-            </label>
             <label className={!transforms.blur_color ? "disabled" : ""}>
               <span>Kernel color</span>
               <input
                 type="number"
-                min="1"
+                min={KERNEL_MIN}
+                max={KERNEL_MAX}
                 step="2"
                 value={kernelColor}
                 disabled={!transforms.blur_color}
                 onChange={(event) => setKernelColor(event.target.value)}
-                onBlur={() => setKernelColor(normalizeKernel(kernelColor, 5))}
+                onBlur={() => setKernelColor(normalizeKernel(kernelColor))}
               />
             </label>
+            <div className="kernel-limit">
+              <span>Rango</span>
+              <strong>{KERNEL_MIN}-{KERNEL_MAX}</strong>
+            </div>
           </section>
 
           {error && (
@@ -449,11 +510,7 @@ function App() {
               <RefreshCw size={18} aria-hidden="true" />
               Limpiar
             </button>
-            <button 
-              className="primary-button" 
-              type="submit" disabled={status === "running"} 
-              style={{ color: status === "running" ? "#9ca3af": undefined}}
-            >
+            <button className="primary-button" type="submit" disabled={status === "running"}>
               {status === "running" ? (
                 <>
                   <Loader2 className="spin" size={18} aria-hidden="true" />
@@ -461,7 +518,7 @@ function App() {
                 </>
               ) : (
                 <>
-                <Play size={18} aria-hidden="true" />
+                  <Play size={18} aria-hidden="true" />
                   {threadMode === THREAD_MODES.compare ? "Comparar" : "Procesar"}
                 </>
               )}
@@ -470,6 +527,20 @@ function App() {
         </form>
 
         <aside className="results-panel">
+          <section className="section-block">
+            <div className="section-heading">
+              <Gauge size={20} aria-hidden="true" />
+              <h2>Avance de carga</h2>
+            </div>
+            <WorkloadProgress
+              activeThread={activeThread}
+              progress={progressState}
+              status={status}
+              tick={progressTick}
+              workload={workload}
+            />
+          </section>
+
           <section className="section-block">
             <div className="section-heading">
               <Clock3 size={20} aria-hidden="true" />
@@ -533,6 +604,63 @@ function App() {
   );
 }
 
+function WorkloadProgress({ activeThread, progress, status, tick, workload }) {
+  void tick;
+
+  const hasWorkload = workload.workloadPixels > 0;
+  const isRunning = status === "running" && progress?.startedAt;
+  const elapsedSeconds = isRunning
+    ? (performance.now() - progress.startedAt) / 1000
+    : progress?.finishedAt && progress?.startedAt
+      ? (progress.finishedAt - progress.startedAt) / 1000
+      : 0;
+  const estimatedSeconds = progress?.estimatedSeconds ?? workload.estimatedSeconds;
+  const totalRuns = progress?.totalRuns ?? workload.runCount;
+  const completedRuns = progress?.completedRuns ?? 0;
+  const runRatio = totalRuns > 0 ? completedRuns / totalRuns : 0;
+  const timeRatio = estimatedSeconds > 0 ? elapsedSeconds / estimatedSeconds : 0;
+  const progressRatio = !hasWorkload
+    ? 0
+    : isRunning
+      ? Math.min(0.97, Math.max(runRatio, timeRatio))
+      : status === "done" && progress
+        ? 1
+        : 0;
+  const remainingSeconds = isRunning
+    ? Math.max(0, estimatedSeconds - elapsedSeconds)
+    : estimatedSeconds;
+  const percent = Math.round(progressRatio * 100);
+  const stage = activeThread
+    ? `${activeThread} hilos`
+    : `${workload.runCount} ${workload.runCount === 1 ? "corrida" : "corridas"}`;
+
+  return (
+    <div className="eta-panel">
+      <div className="eta-ring" style={{ "--progress-deg": `${progressRatio * 360}deg` }}>
+        <strong>{percent}%</strong>
+        <span>{isRunning ? "Activo" : "Estimado"}</span>
+      </div>
+      <div className="eta-details">
+        <div>
+          <span>Restante</span>
+          <strong>{hasWorkload ? formatDuration(remainingSeconds) : "--"}</strong>
+        </div>
+        <div>
+          <span>Carga</span>
+          <strong>{formatPixels(workload.workloadPixels)}</strong>
+        </div>
+        <div>
+          <span>Etapa</span>
+          <strong>{hasWorkload ? stage : "--"}</strong>
+        </div>
+      </div>
+      <div className="eta-track" aria-label="Avance estimado">
+        <span style={{ width: `${percent}%` }} />
+      </div>
+    </div>
+  );
+}
+
 function Metrics({ run }) {
   if (!run) {
     return (
@@ -545,16 +673,20 @@ function Metrics({ run }) {
 
   const items = run.comparison
     ? [
-        { label: "Mejor C", value: `${run.executionTime.toFixed(6)} s` },
+        { label: "Mejor tiempo", value: `${run.executionTime.toFixed(6)} s` },
         { label: "Total C", value: `${run.totalExecutionTime.toFixed(6)} s` },
         { label: "Imagenes", value: run.images },
         { label: "Mejor hilos", value: run.bestThread },
+        { label: "Rendimiento", value: formatPixelsPerSecond(run.pixelsPerSecond) },
+        { label: "Kernel", value: run.usesBlur ? run.kernelColor : "N/A" },
       ]
     : [
-        { label: "Tiempo C", value: `${run.executionTime.toFixed(6)} s` },
-        { label: "Total request", value: `${run.clientSeconds.toFixed(3)} s` },
+        { label: "Tiempo MPI", value: `${run.executionTime.toFixed(6)} s` },
+        { label: "Request", value: `${run.clientSeconds.toFixed(3)} s` },
         { label: "Imagenes", value: run.images },
         { label: "Hilos", value: run.threads },
+        { label: "Rendimiento", value: formatPixelsPerSecond(run.pixelsPerSecond) },
+        { label: "Kernel", value: run.usesBlur ? run.kernelColor : "N/A" },
       ];
 
   return (
@@ -606,12 +738,126 @@ function TimeChart({ history }) {
   );
 }
 
+async function createBmpEntry(file) {
+  const id = createFileId(file);
+
+  if (!file.name.toLowerCase().endsWith(".bmp")) {
+    return { error: `${file.name}: solo .bmp` };
+  }
+
+  try {
+    const metadata = await readBmpMetadata(file);
+    const longSide = Math.max(metadata.width, metadata.height);
+
+    if (longSide <= MIN_BMP_SIDE) {
+      return { error: `${file.name}: requiere mas de ${MIN_BMP_SIDE}px` };
+    }
+
+    return {
+      entry: {
+        id,
+        file,
+        ...metadata,
+        pixels: metadata.width * metadata.height,
+      },
+    };
+  } catch {
+    return { error: `${file.name}: BMP invalido` };
+  }
+}
+
+async function readBmpMetadata(file) {
+  const header = await file.slice(0, 26).arrayBuffer();
+  if (header.byteLength < 26) {
+    throw new Error("BMP header too small");
+  }
+
+  const view = new DataView(header);
+  const isBmp = view.getUint8(0) === 0x42 && view.getUint8(1) === 0x4d;
+  if (!isBmp) {
+    throw new Error("Invalid BMP signature");
+  }
+
+  const width = Math.abs(view.getInt32(18, true));
+  const height = Math.abs(view.getInt32(22, true));
+  if (!width || !height) {
+    throw new Error("Invalid BMP dimensions");
+  }
+
+  return { width, height };
+}
+
+function createWorkloadSummary(files, selectedTransforms, threadMode, history) {
+  const imagePixels = files.reduce((sum, entry) => sum + entry.pixels, 0);
+  const transformCount = selectedTransforms.length;
+  const runCount = threadMode === THREAD_MODES.compare ? THREAD_OPTIONS.length : 1;
+  const workloadPixels = imagePixels * transformCount * runCount;
+  const throughput = estimateThroughput(history);
+
+  return {
+    estimatedSeconds: workloadPixels > 0 ? workloadPixels / throughput.value : 0,
+    imagePixels,
+    runCount,
+    throughput,
+    transformCount,
+    workloadPixels,
+  };
+}
+
+function estimateThroughput(history) {
+  const recentRuns = history
+    .filter((run) => run.totalPixels > 0 && run.executionTime > 0)
+    .slice(-5);
+
+  if (recentRuns.length === 0) {
+    return { measured: false, value: DEFAULT_PIXELS_PER_SECOND };
+  }
+
+  const totalPixels = recentRuns.reduce((sum, run) => sum + run.totalPixels, 0);
+  const totalSeconds = recentRuns.reduce((sum, run) => sum + run.executionTime, 0);
+  return {
+    measured: true,
+    value: totalSeconds > 0 ? totalPixels / totalSeconds : DEFAULT_PIXELS_PER_SECOND,
+  };
+}
+
+function createFileId(file) {
+  return `${file.name}-${file.size}-${file.lastModified}`;
+}
+
 function formatBytes(bytes) {
   if (!bytes) return "0 KB";
   const units = ["B", "KB", "MB", "GB"];
   const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   const value = bytes / 1024 ** index;
   return `${value.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+}
+
+function formatPixels(pixels) {
+  if (!pixels) return "0 px";
+  const units = ["px", "Kpx", "Mpx", "Gpx"];
+  const index = Math.min(Math.floor(Math.log(pixels) / Math.log(1000)), units.length - 1);
+  const value = pixels / 1000 ** index;
+  return `${value.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+}
+
+function formatPixelsPerSecond(pixelsPerSecond) {
+  if (!pixelsPerSecond) return "0 px/s";
+  return `${formatPixels(pixelsPerSecond)}/s`;
+}
+
+function formatDuration(seconds) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "0 s";
+  if (seconds < 1) return "<1 s";
+
+  const wholeSeconds = Math.ceil(seconds);
+  const hours = Math.floor(wholeSeconds / 3600);
+  const minutes = Math.floor((wholeSeconds % 3600) / 60);
+  const restSeconds = wholeSeconds % 60;
+
+  if (hours > 0) return `${hours} h ${minutes} min`;
+  if (minutes > 0) return `${minutes} min ${restSeconds} s`;
+  return `${restSeconds} s`;
 }
 
 function readApiError(data) {
@@ -635,6 +881,8 @@ function createComparisonRun(runs) {
     executionTime: bestRun.executionTime,
     totalExecutionTime: runs.reduce((sum, run) => sum + run.executionTime, 0),
     clientSeconds: runs.reduce((sum, run) => sum + run.clientSeconds, 0),
+    totalPixels: runs.reduce((sum, run) => sum + run.totalPixels, 0),
+    pixelsPerSecond: bestRun.pixelsPerSecond,
     bestThread: bestRun.threads,
     comparison: runs,
     outputImages: lastRun.outputImages,
