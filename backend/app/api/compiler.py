@@ -198,6 +198,15 @@ async def img_processor(images: list[UploadFile] = File(...), options: str = For
             )
 
         raw_stdout = run_result.stdout.strip()
+
+        log_files = []
+
+        for log_file in C_COMPILER_DIR.glob("rank_*.log"):
+            log_files.append({
+                "name": log_file.name,
+                "content": log_file.read_text()
+            })
+
         # Parsea pares KEY=valor del stdout; valor acepta int, float y notacion cientifica (1.234e+08).
         def _extract(key: str, cast=float, default=0.0):
             match = re.search(rf"{key}=([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)", raw_stdout)
@@ -238,6 +247,9 @@ async def img_processor(images: list[UploadFile] = File(...), options: str = For
                 "execution_time_seconds": execution_time,
                 "total_pixels": total_pixels,
                 "pixels_per_second": f"{pixels_per_sec:.3e}",
+            },
+            "cluster_metrics": {
+                "logs": log_files
             },
         }
                 
