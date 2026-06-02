@@ -37,8 +37,84 @@ int main(int argc, char *argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
 
     if (argc < 9) {
+        long long *all_pixels = NULL;
+        long long *all_tasks = NULL;
+        double *all_times = NULL;
+
+        if (myrank == 0) {
+            all_pixels = malloc(sizeof(long long) * nprocs);
+            all_tasks  = malloc(sizeof(long long) * nprocs);
+            all_times  = malloc(sizeof(double) * nprocs);
+        }
+
+        MPI_Gather(
+            &local_pixels,
+            1,
+            MPI_LONG_LONG,
+            all_pixels,
+            1,
+            MPI_LONG_LONG,
+            0,
+            MPI_COMM_WORLD
+        );
+
+        MPI_Gather(
+            &local_tasks,
+            1,
+            MPI_LONG_LONG,
+            all_tasks,
+            1,
+            MPI_LONG_LONG,
+            0,
+            MPI_COMM_WORLD
+        );
+
+        MPI_Gather(
+            &compute_time,
+            1,
+            MPI_DOUBLE,
+            all_times,
+            1,
+            MPI_DOUBLE,
+            0,
+            MPI_COMM_WORLD
+        );
         if (myrank == 0) {
             fprintf(stderr, "Uso: %s n_images grey_h color_v color_h blur_color kernel_color threads input_dir\n", argv[0]);
+            printf("\n");
+            printf("====================================\n");
+            printf(" DISTRIBUCION DE CARGA DEL CLUSTER\n");
+            printf("====================================\n");
+
+            printf("Total tareas: %lld\n", total_tasks);
+            printf("Total pixeles: %lld\n", total_pixels);
+
+            printf("Tiempo total job: %.6f s\n", global_elapsed);
+
+            printf("Throughput global: %.3e pix/s\n",
+                pixels_per_sec);
+
+            printf("====================================\n");
+
+            printf("\n");
+            printf("Carga por maquina:\n");
+
+            for (int i = 0; i < nprocs; i++) {
+
+                double pct = 0.0;
+
+                if (total_pixels > 0)
+                    pct = 100.0 * all_pixels[i] / total_pixels;
+
+                printf(
+                    "Nodo %d | tareas=%lld | pixeles=%lld | carga=%.2f%% | tiempo=%.3f s\n",
+                    i,
+                    all_tasks[i],
+                    all_pixels[i],
+                    pct,
+                    all_times[i]
+                );
+            }
         }
         MPI_Finalize();
         return 1;
@@ -73,6 +149,7 @@ int main(int argc, char *argv[]) {
 
     #pragma omp parallel
     {
+        compute_start = MPI_Wtime();
         #pragma omp single
         {
             int task_id = 0;
@@ -93,6 +170,7 @@ int main(int argc, char *argv[]) {
                 if (grey_h) {
                     if (task_id % nprocs == myrank) {
                         local_pixels += pixels_per_image;
+                        local_tasks++;
                         #pragma omp task firstprivate(input, out_gh)
                         inv_img_grey_horizontal(out_gh, input);
                     }
@@ -101,6 +179,7 @@ int main(int argc, char *argv[]) {
                 if (color_v) {
                     if (task_id % nprocs == myrank) {
                         local_pixels += pixels_per_image;
+                        local_tasks++;
                         #pragma omp task firstprivate(input, out_cv)
                         inv_img_color_vertical(out_cv, input);
                     }
@@ -109,6 +188,7 @@ int main(int argc, char *argv[]) {
                 if (color_h) {
                     if (task_id % nprocs == myrank) {
                         local_pixels += pixels_per_image;
+                        local_tasks++;
                         #pragma omp task firstprivate(input, out_ch)
                         inv_img_color_horizontal(out_ch, input);
                     }
@@ -117,6 +197,7 @@ int main(int argc, char *argv[]) {
                 if (blur_color) {
                     if (task_id % nprocs == myrank) {
                         local_pixels += pixels_per_image;
+                        local_tasks++;
                         #pragma omp task firstprivate(input, out_dc)
                         desenfoque_color(input, out_dc, kernel_color);
                     }
@@ -124,9 +205,10 @@ int main(int argc, char *argv[]) {
                 }
             }
             #pragma omp taskwait
+            compute_end = MPI_Wtime();
         }
     }
-
+    double compute_time = compute_end - compute_start;
     // Esperamos a que TODOS los ranks terminen antes de cerrar el cronometro
     MPI_Barrier(MPI_COMM_WORLD);
 
@@ -139,6 +221,19 @@ int main(int argc, char *argv[]) {
 
     // Total de pixeles procesados = suma de lo que hizo cada rank
     long long total_pixels = 0;
+    long long total_tasks = 0;
+
+    MPI_Reduce(
+        &local_tasks,
+        &total_tasks,
+        1,
+        MPI_LONG_LONG,
+        MPI_SUM,
+        0,
+        MPI_COMM_WORLD
+    );
+    double compute_start = 0.0;
+    double compute_end = 0.0;
     MPI_Reduce(&local_pixels, &total_pixels, 1, MPI_LONG_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
 
     if (myrank == 0) {
@@ -146,6 +241,30 @@ int main(int argc, char *argv[]) {
         printf("TIME=%.6f\n", global_elapsed);
         printf("TOTAL_PIXELS=%lld\n", total_pixels);
         printf("PIXELS_PER_SEC=%.6e\n", pixels_per_sec);
+    }
+
+    char logfile[64];
+    sprintf(logfile, "rank_%d.log", myrank);
+
+    FILE *log = fopen(logfile, "w");
+
+    if (log) {
+
+        fprintf(log, "===== MPI RANK %d =====\n", myrank);
+        fprintf(log, "Procesos MPI totales: %d\n", nprocs);
+        fprintf(log, "Threads OpenMP: %d\n", threads);
+
+        fprintf(log, "Tareas ejecutadas: %lld\n", local_tasks);
+        fprintf(log, "Pixeles procesados: %lld\n", local_pixels);
+
+        fprintf(log, "Tiempo efectivo: %.6f segundos\n", compute_time);
+
+        if (compute_time > 0)
+            fprintf(log,
+                    "Pixeles/segundo: %.3e\n",
+                    local_pixels / compute_time);
+
+        fclose(log);
     }
 
     MPI_Finalize();
