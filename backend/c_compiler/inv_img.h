@@ -1,243 +1,186 @@
-// Utilizamos malloc para saber que pixel estamos trabajando a partir del cálculo de las dimensiones de la imagen
-extern void inv_img_grey_vertical(char *name, char *path) {
-    FILE *image, *outputImage;
+// Las transformaciones separan la E/S (lectura/escritura de archivos, que en un
+// cluster MPI viaja por red/NFS) del cómputo puro. Solo se cronometra el cómputo
+// en memoria; el tiempo devuelto en *compute_seconds NO incluye tiempo de red.
+
+// ── Gris + espejo vertical ──
+extern void inv_img_grey_vertical(char *name, char *path, double *compute_seconds) {
+    if (compute_seconds) *compute_seconds = 0.0;
+
     char output_path[100] = "../img/";
     strcat(output_path, name);
-    image = fopen(path,"rb");
-    outputImage = fopen(output_path,"wb");
 
-    if (!image || !outputImage) {
-        printf("Error abriendo archivos.\n");
-        return;
-    }
-    long ancho;
-    long alto;
-    unsigned char r, g, b;               //Pixel
-    unsigned char* ptr;
+    FILE *image = fopen(path, "rb");
+    if (!image) { printf("Error abriendo archivos.\n"); return; }
 
+    // ── Lectura (E/S de red, NO cronometrada) ──
     unsigned char xx[54];
-    int cuenta = 0;
-    for(int i=0; i<54; i++) {
-      xx[i] = fgetc(image);
-      fputc(xx[i], outputImage);   //Copia cabecera a nueva imagen
+    if (fread(xx, 1, 54, image) != 54) { fclose(image); return; }
+    long ancho = (long)xx[20]*65536 + (long)xx[19]*256 + (long)xx[18];
+    long alto  = (long)xx[24]*65536 + (long)xx[23]*256 + (long)xx[22];
+    long npix  = alto * ancho;
+
+    unsigned char *raw = (unsigned char*)malloc(npix * 3);
+    unsigned char *grey = (unsigned char*)malloc(npix);
+    unsigned char *out  = (unsigned char*)malloc(npix * 3);
+    fread(raw, 1, npix * 3, image);
+    fclose(image);
+
+    // ── Cómputo (en memoria, cronometrado) ──
+    double t0 = omp_get_wtime();
+    for (long p = 0; p < npix; p++) {
+        unsigned char b = raw[p*3];
+        unsigned char g = raw[p*3+1];
+        unsigned char r = raw[p*3+2];
+        grey[p] = 0.21*r + 0.72*g + 0.07*b;
     }
-    ancho = (long)xx[20]*65536+(long)xx[19]*256+(long)xx[18];
-    alto = (long)xx[24]*65536+(long)xx[23]*256+(long)xx[22];
-    // printf("largo img %li\n",alto);
-    // printf("ancho img %li\n",ancho);
-
-    ptr = (unsigned char*)malloc(alto*ancho*3*sizeof(unsigned char));
-
-    for (long p = 0; p < alto * ancho; p++) {
-      b = fgetc(image);
-      g = fgetc(image);
-      r = fgetc(image);
-
-
-      unsigned char pixel = 0.21*r+0.72*g+0.07*b;
-
-      ptr[cuenta] = pixel; //b
-      ptr[cuenta+1] = pixel; //g
-      ptr[cuenta+2] = pixel; //r
-
-      cuenta+=3;
-    }                                        //Grises
-    // printf("%d\n",cuenta);
-    for (int row = 0; row < alto; row++) {
-        for (int col = ancho - 1; col >= 0; col--) {  
-            int idx = (row * ancho + col) * 3;
-            fputc(ptr[idx], outputImage);
-            fputc(ptr[idx], outputImage);
-            fputc(ptr[idx], outputImage);
+    for (long row = 0; row < alto; row++) {
+        for (long col = 0; col < ancho; col++) {
+            long src = row * ancho + (ancho - 1 - col);
+            long o   = (row * ancho + col) * 3;
+            out[o] = out[o+1] = out[o+2] = grey[src];
         }
     }
-    free(ptr);
-    fclose(image);
-    fclose(outputImage);
+    if (compute_seconds) *compute_seconds = omp_get_wtime() - t0;
+
+    // ── Escritura (E/S de red, NO cronometrada) ──
+    FILE *outputImage = fopen(output_path, "wb");
+    if (outputImage) {
+        fwrite(xx, 1, 54, outputImage);
+        fwrite(out, 1, npix * 3, outputImage);
+        fclose(outputImage);
+    }
+    free(raw); free(grey); free(out);
 }
 
-// Utilizamos malloc para saber que pixel estamos trabajando a partir del cálculo de las dimensiones de la imagen
-extern void inv_img_grey_horizontal(char *name, char *path) {
-    FILE *image, *outputImage;
+// ── Gris + espejo horizontal ──
+extern void inv_img_grey_horizontal(char *name, char *path, double *compute_seconds) {
+    if (compute_seconds) *compute_seconds = 0.0;
+
     char output_path[100] = "../img/";
     strcat(output_path, name);
-    image = fopen(path,"rb");
-    outputImage = fopen(output_path,"wb");
 
-    if (!image || !outputImage) {
-        printf("Error abriendo archivos.\n");
-        return;
-    }
-    long ancho;
-    long alto;
-    unsigned char r, g, b;               //Pixel
-    unsigned char* ptr;
+    FILE *image = fopen(path, "rb");
+    if (!image) { printf("Error abriendo archivos.\n"); return; }
 
+    // ── Lectura (E/S de red, NO cronometrada) ──
     unsigned char xx[54];
-    int cuenta = 0;
-    for(int i=0; i<54; i++) {
-      xx[i] = fgetc(image);
-      fputc(xx[i], outputImage);   //Copia cabecera a nueva imagen
-    }
-    ancho = (long)xx[20]*65536+(long)xx[19]*256+(long)xx[18];
-    alto = (long)xx[24]*65536+(long)xx[23]*256+(long)xx[22];
-    // printf("largo img %li\n",alto);
-    // printf("ancho img %li\n",ancho);
+    if (fread(xx, 1, 54, image) != 54) { fclose(image); return; }
+    long ancho = (long)xx[20]*65536 + (long)xx[19]*256 + (long)xx[18];
+    long alto  = (long)xx[24]*65536 + (long)xx[23]*256 + (long)xx[22];
+    long npix  = alto * ancho;
 
-    ptr = (unsigned char*)malloc(alto*ancho*3*sizeof(unsigned char));
-
-    for (long p = 0; p < alto * ancho; p++) {
-      b = fgetc(image);
-      g = fgetc(image);
-      r = fgetc(image);
-
-
-      unsigned char pixel = 0.21*r+0.72*g+0.07*b;
-
-      ptr[cuenta] = pixel; //b
-      ptr[cuenta+1] = pixel; //g
-      ptr[cuenta+2] = pixel; //r
-
-
-      cuenta++;
-
-    }                                        //Grises
-    // printf("%d\n",cuenta);
-    cuenta = 0;
-    for (int i = 0; i < alto*ancho; ++i) {
-      // fputc(ptr[i], outputImage);
-      // fputc(ptr[i+1], outputImage);
-      // fputc(ptr[i+2], outputImage);
-      fputc(ptr[(ancho * alto) - 1 - i], outputImage);
-      fputc(ptr[(ancho * alto) - 1 - i], outputImage);
-      fputc(ptr[(ancho * alto) - 1 - i], outputImage);
-      cuenta++;
-      if (cuenta == 0){
-        cuenta = ancho;
-      }
-    }
-    free(ptr);
+    unsigned char *raw = (unsigned char*)malloc(npix * 3);
+    unsigned char *grey = (unsigned char*)malloc(npix);
+    unsigned char *out  = (unsigned char*)malloc(npix * 3);
+    fread(raw, 1, npix * 3, image);
     fclose(image);
-    fclose(outputImage);
+
+    // ── Cómputo (en memoria, cronometrado) ──
+    double t0 = omp_get_wtime();
+    for (long p = 0; p < npix; p++) {
+        unsigned char b = raw[p*3];
+        unsigned char g = raw[p*3+1];
+        unsigned char r = raw[p*3+2];
+        grey[p] = 0.21*r + 0.72*g + 0.07*b;
+    }
+    for (long i = 0; i < npix; i++) {
+        out[i*3] = out[i*3+1] = out[i*3+2] = grey[npix - 1 - i];
+    }
+    if (compute_seconds) *compute_seconds = omp_get_wtime() - t0;
+
+    // ── Escritura (E/S de red, NO cronometrada) ──
+    FILE *outputImage = fopen(output_path, "wb");
+    if (outputImage) {
+        fwrite(xx, 1, 54, outputImage);
+        fwrite(out, 1, npix * 3, outputImage);
+        fclose(outputImage);
+    }
+    free(raw); free(grey); free(out);
 }
 
-// Utilizamos malloc para saber que pixel estamos trabajando a partir del cálculo de las dimensiones de la imagen
-extern void inv_img_color_vertical(char *name, char *path) {
-    FILE *image, *outputImage;
+// ── Color + espejo vertical ──
+extern void inv_img_color_vertical(char *name, char *path, double *compute_seconds) {
+    if (compute_seconds) *compute_seconds = 0.0;
+
     char output_path[100] = "../img/";
     strcat(output_path, name);
-    image = fopen(path,"rb");
-    outputImage = fopen(output_path,"wb");
 
-    if (!image || !outputImage) {
-        printf("Error abriendo archivos.\n");
-        return;
-    }
-    long ancho;
-    long alto;
-    unsigned char r, g, b;               //Pixel
-    unsigned char* ptr;
+    FILE *image = fopen(path, "rb");
+    if (!image) { printf("Error abriendo archivos.\n"); return; }
 
+    // ── Lectura (E/S de red, NO cronometrada) ──
     unsigned char xx[54];
-    int cuenta = 0;
-    for(int i=0; i<54; i++) {
-      xx[i] = fgetc(image);
-      fputc(xx[i], outputImage);   //Copia cabecera a nueva imagen
-    }
-    ancho = (long)xx[20]*65536+(long)xx[19]*256+(long)xx[18];
-    alto = (long)xx[24]*65536+(long)xx[23]*256+(long)xx[22];
-    // printf("largo img %li\n",alto);
-    // printf("ancho img %li\n",ancho);
+    if (fread(xx, 1, 54, image) != 54) { fclose(image); return; }
+    long ancho = (long)xx[20]*65536 + (long)xx[19]*256 + (long)xx[18];
+    long alto  = (long)xx[24]*65536 + (long)xx[23]*256 + (long)xx[22];
+    long npix  = alto * ancho;
 
-    ptr = (unsigned char*)malloc(alto*ancho*3*sizeof(unsigned char));
+    unsigned char *raw = (unsigned char*)malloc(npix * 3);
+    unsigned char *out = (unsigned char*)malloc(npix * 3);
+    fread(raw, 1, npix * 3, image);
+    fclose(image);
 
-    for (long p = 0; p < alto * ancho; p++) {
-      b = fgetc(image);
-      g = fgetc(image);
-      r = fgetc(image);
-
-
-      // unsigned char pixel = 0.21*r+0.72*g+0.07*b;
-
-      ptr[cuenta] = b; //b
-      ptr[cuenta+1] = g; //g
-      ptr[cuenta+2] = r; //r
-
-      cuenta+=3;
-    }                                        //Grises
-    // printf("%d\n",cuenta);
-    for (int row = 0; row < alto; row++) {
-      for (int col = 0; col < ancho; col++) {
-          int src_col = ancho - 1 - col; 
-          int idx = (row * ancho + src_col) * 3;
-          fputc(ptr[idx], outputImage);     // B
-          fputc(ptr[idx+1], outputImage);   // G
-          fputc(ptr[idx+2], outputImage);   // R
+    // ── Cómputo (en memoria, cronometrado) ──
+    double t0 = omp_get_wtime();
+    long o = 0;
+    for (long row = 0; row < alto; row++) {
+        for (long col = 0; col < ancho; col++) {
+            long idx = (row * ancho + (ancho - 1 - col)) * 3;
+            out[o++] = raw[idx];     // B
+            out[o++] = raw[idx+1];   // G
+            out[o++] = raw[idx+2];   // R
         }
     }
-    free(ptr);
-    fclose(image);
-    fclose(outputImage);
+    if (compute_seconds) *compute_seconds = omp_get_wtime() - t0;
+
+    // ── Escritura (E/S de red, NO cronometrada) ──
+    FILE *outputImage = fopen(output_path, "wb");
+    if (outputImage) {
+        fwrite(xx, 1, 54, outputImage);
+        fwrite(out, 1, npix * 3, outputImage);
+        fclose(outputImage);
+    }
+    free(raw); free(out);
 }
 
+// ── Color + espejo horizontal ──
+extern void inv_img_color_horizontal(char *name, char *path, double *compute_seconds) {
+    if (compute_seconds) *compute_seconds = 0.0;
 
-extern void inv_img_color_horizontal(char *name, char *path) {
-    FILE *image, *outputImage;
     char output_path[100] = "../img/";
     strcat(output_path, name);
-    image = fopen(path,"rb");
-    outputImage = fopen(output_path,"wb");
 
-    if (!image || !outputImage) {
-        printf("Error abriendo archivos.\n");
-        return;
-    }
-    long ancho;
-    long alto;
-    unsigned char r, g, b;               //Pixel
-    unsigned char* ptr;
+    FILE *image = fopen(path, "rb");
+    if (!image) { printf("Error abriendo archivos.\n"); return; }
 
+    // ── Lectura (E/S de red, NO cronometrada) ──
     unsigned char xx[54];
-    int cuenta = 0;
-    for(int i=0; i<54; i++) {
-      xx[i] = fgetc(image);
-      fputc(xx[i], outputImage);   //Copia cabecera a nueva imagen
-    }
-    ancho = (long)xx[20]*65536+(long)xx[19]*256+(long)xx[18];
-    alto = (long)xx[24]*65536+(long)xx[23]*256+(long)xx[22];
-    // printf("largo img %li\n",alto);
-    // printf("ancho img %li\n",ancho);
+    if (fread(xx, 1, 54, image) != 54) { fclose(image); return; }
+    long ancho = (long)xx[20]*65536 + (long)xx[19]*256 + (long)xx[18];
+    long alto  = (long)xx[24]*65536 + (long)xx[23]*256 + (long)xx[22];
+    long npix  = alto * ancho;
 
-    ptr = (unsigned char*)malloc(alto*ancho*3*sizeof(unsigned char));
-
-    for (long p = 0; p < alto * ancho; p++) {
-      b = fgetc(image);
-      g = fgetc(image);
-      r = fgetc(image);
-
-
-      ptr[cuenta*3]   = b;
-      ptr[cuenta*3+1] = g;
-      ptr[cuenta*3+2] = r;
-
-      cuenta++;
-
-    }
-    // printf("%d\n",cuenta);
-    cuenta = 0;
-    for (int i = 0; i < alto*ancho; ++i) {
-      // fputc(ptr[i], outputImage);
-      // fputc(ptr[i+1], outputImage);
-      // fputc(ptr[i+2], outputImage);
-      fputc(ptr[((ancho * alto) - 1 - i) * 3],     outputImage);
-      fputc(ptr[((ancho * alto) - 1 - i) * 3 + 1], outputImage);
-      fputc(ptr[((ancho * alto) - 1 - i) * 3 + 2], outputImage);
-      cuenta++;
-      if (cuenta == 0){
-        cuenta = ancho;
-      }
-    }
-    free(ptr);
+    unsigned char *raw = (unsigned char*)malloc(npix * 3);
+    unsigned char *out = (unsigned char*)malloc(npix * 3);
+    fread(raw, 1, npix * 3, image);
     fclose(image);
-    fclose(outputImage);
+
+    // ── Cómputo (en memoria, cronometrado) ──
+    double t0 = omp_get_wtime();
+    for (long i = 0; i < npix; i++) {
+        long s = (npix - 1 - i) * 3;
+        out[i*3]   = raw[s];     // B
+        out[i*3+1] = raw[s+1];   // G
+        out[i*3+2] = raw[s+2];   // R
+    }
+    if (compute_seconds) *compute_seconds = omp_get_wtime() - t0;
+
+    // ── Escritura (E/S de red, NO cronometrada) ──
+    FILE *outputImage = fopen(output_path, "wb");
+    if (outputImage) {
+        fwrite(xx, 1, 54, outputImage);
+        fwrite(out, 1, npix * 3, outputImage);
+        fclose(outputImage);
+    }
+    free(raw); free(out);
 }

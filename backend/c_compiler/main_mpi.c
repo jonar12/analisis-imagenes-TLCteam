@@ -48,8 +48,6 @@ int main(int argc, char *argv[]) {
     long long total_pixels  = 0;
     long long total_tasks   = 0;
 
-    double compute_start    = 0.0;
-    double compute_end      = 0.0;
     double compute_time     = 0.0;
     double global_elapsed   = 0.0;
     double total_start_time = 0.0;
@@ -116,7 +114,6 @@ int main(int argc, char *argv[]) {
         #pragma omp single
         {
             int task_id = 0;
-            compute_start = MPI_Wtime();
 
             for (int i = 1; i <= n_images; i++) {
                 char input[256];
@@ -141,9 +138,8 @@ int main(int argc, char *argv[]) {
                         local_tasks++;
                         #pragma omp task firstprivate(input, out_gh, idx)
                         {
-                            double t0 = MPI_Wtime();
-                            inv_img_grey_horizontal(out_gh, input);
-                            task_log[idx].time_seconds = MPI_Wtime() - t0;
+                            /* La funcion cronometra solo el computo (sin E/S de red) */
+                            inv_img_grey_horizontal(out_gh, input, &task_log[idx].time_seconds);
                         }
                     }
                     task_id++;
@@ -159,9 +155,8 @@ int main(int argc, char *argv[]) {
                         local_tasks++;
                         #pragma omp task firstprivate(input, out_cv, idx)
                         {
-                            double t0 = MPI_Wtime();
-                            inv_img_color_vertical(out_cv, input);
-                            task_log[idx].time_seconds = MPI_Wtime() - t0;
+                            /* La funcion cronometra solo el computo (sin E/S de red) */
+                            inv_img_color_vertical(out_cv, input, &task_log[idx].time_seconds);
                         }
                     }
                     task_id++;
@@ -177,9 +172,8 @@ int main(int argc, char *argv[]) {
                         local_tasks++;
                         #pragma omp task firstprivate(input, out_ch, idx)
                         {
-                            double t0 = MPI_Wtime();
-                            inv_img_color_horizontal(out_ch, input);
-                            task_log[idx].time_seconds = MPI_Wtime() - t0;
+                            /* La funcion cronometra solo el computo (sin E/S de red) */
+                            inv_img_color_horizontal(out_ch, input, &task_log[idx].time_seconds);
                         }
                     }
                     task_id++;
@@ -195,20 +189,21 @@ int main(int argc, char *argv[]) {
                         local_tasks++;
                         #pragma omp task firstprivate(input, out_dc, idx, kernel_color)
                         {
-                            double t0 = MPI_Wtime();
-                            desenfoque_color(input, out_dc, kernel_color);
-                            task_log[idx].time_seconds = MPI_Wtime() - t0;
+                            /* La funcion cronometra solo el computo (sin E/S de red) */
+                            desenfoque_color(input, out_dc, kernel_color, &task_log[idx].time_seconds);
                         }
                     }
                     task_id++;
                 }
             }
             #pragma omp taskwait
-            compute_end = MPI_Wtime();
+
+            /* Tiempo de computo del nodo = suma de los tiempos de computo
+             * (sin E/S de red) de cada tarea procesada en este rank. */
+            for (int t = 0; t < task_log_n; t++)
+                compute_time += task_log[t].time_seconds;
         }
     }
-
-    compute_time = compute_end - compute_start;
 
     /* ── Wait for all ranks ── */
     MPI_Barrier(MPI_COMM_WORLD);
@@ -275,7 +270,7 @@ int main(int argc, char *argv[]) {
         fprintf(log, "Threads OpenMP:        %d\n",   threads);
         fprintf(log, "Tareas ejecutadas:     %lld\n", local_tasks);
         fprintf(log, "Pixeles procesados:    %lld\n", local_pixels);
-        fprintf(log, "Tiempo efectivo:       %.6f s\n", compute_time);
+        fprintf(log, "Tiempo de computo:     %.6f s (sin E/S de red)\n", compute_time);
         if (compute_time > 0)
             fprintf(log, "Pixeles/segundo:       %.3e\n",
                     (double)local_pixels / compute_time);
