@@ -1,12 +1,15 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Body # type: ignore
 from fastapi.responses import StreamingResponse # type: ignore
 import io, json, os, re, shutil, subprocess, sys, zipfile
+from datetime import datetime
 from pathlib import Path
 
 router = APIRouter()
 
-C_COMPILER_DIR = Path(__file__).parent.parent.parent / "c_compiler"                                            
+C_COMPILER_DIR = Path(__file__).parent.parent.parent / "c_compiler"
 IMG_DIR = Path(__file__).parent.parent.parent / "img"
+# Cada ejecucion guarda sus logs en LOGS_DIR/<timestamp>/ para conservarlos todos.
+LOGS_DIR = Path(__file__).parent.parent.parent / "logs"
 BINARY_NAME = "main_mpi.exe" if sys.platform == "win32" else "main_mpi"                              
 ALLOWED_THREADS = {6, 12, 18}
 MAX_IMAGES = 250
@@ -161,11 +164,15 @@ async def img_processor(images: list[UploadFile] = File(...), options: str = For
             raise HTTPException(status_code=400, detail="Selecciona al menos una transformacion")
 
         expected_images = expected_output_images(len(images), opts)
+        # Limpia por completo el directorio de salida en cada ejecucion.
+        if IMG_DIR.exists():
+            shutil.rmtree(IMG_DIR)
         IMG_DIR.mkdir(parents=True, exist_ok=True)
-        for output_image in expected_images:
-            output_path = IMG_DIR / output_image["filename"]
-            if output_path.exists():
-                output_path.unlink()
+
+        # Elimina logs de corridas anteriores en el CWD del binario para no
+        # arrastrar rank_*.log obsoletos (p.ej. si esta corrida usa menos nodos).
+        for old_log in C_COMPILER_DIR.glob("rank_*.log"):
+            old_log.unlink()
 
         # Prepare arguments matching C: n_images, flags, kernels, threads, input_dir
         args = [
@@ -199,13 +206,23 @@ async def img_processor(images: list[UploadFile] = File(...), options: str = For
 
         raw_stdout = run_result.stdout.strip()
 
-        log_files = []
+        # Conserva los logs de esta corrida en LOGS_DIR/<timestamp>/.
+        run_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        run_log_dir = LOGS_DIR / run_timestamp
+        run_log_dir.mkdir(parents=True, exist_ok=True)
 
-        for log_file in C_COMPILER_DIR.glob("rank_*.log"):
+        log_files = []
+        for log_file in sorted(C_COMPILER_DIR.glob("rank_*.log")):
             log_files.append({
                 "name": log_file.name,
                 "content": log_file.read_text()
             })
+            # Mueve el log al folder de la corrida (el binario lo regenera la proxima vez).
+            shutil.move(str(log_file), str(run_log_dir / log_file.name))
+
+        # Guarda tambien el resumen del cluster (stdout) junto a los logs de la corrida.
+        if raw_stdout:
+            (run_log_dir / "cluster_summary.txt").write_text(raw_stdout)
 
         # Parsea pares KEY=valor del stdout; valor acepta int, float y notacion cientifica (1.234e+08).
         def _extract(key: str, cast=float, default=0.0):
@@ -249,7 +266,9 @@ async def img_processor(images: list[UploadFile] = File(...), options: str = For
                 "pixels_per_second": f"{pixels_per_sec:.3e}",
             },
             "cluster_metrics": {
-                "logs": log_files
+                "logs": log_files,
+                "run_id": run_timestamp,
+                "logs_dir": str(run_log_dir.resolve()),
             },
         }
                 
