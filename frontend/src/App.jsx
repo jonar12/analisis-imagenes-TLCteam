@@ -13,6 +13,7 @@ import {
   Play,
   RefreshCw,
   SlidersHorizontal,
+  Timer,
   Upload,
   X,
 } from "lucide-react";
@@ -634,8 +635,19 @@ function WorkloadProgress({ activeThread, progress, status, tick, workload }) {
     ? `${activeThread} hilos`
     : `${workload.runCount} ${workload.runCount === 1 ? "corrida" : "corridas"}`;
 
+  const timerLabel = status === "done" && progress ? "Tiempo total" : "Transcurrido";
+
   return (
     <div className="eta-panel">
+      <div
+        className={`eta-timer${isRunning ? " is-running" : ""}`}
+        role="timer"
+        aria-label={`${timerLabel}: ${formatStopwatch(elapsedSeconds)}`}
+      >
+        <Timer size={18} aria-hidden="true" />
+        <span className="eta-timer-value">{formatStopwatch(elapsedSeconds)}</span>
+        <span className="eta-timer-label">{timerLabel}</span>
+      </div>
       <div className="eta-ring" style={{ "--progress-deg": `${progressRatio * 360}deg` }}>
         <strong>{percent}%</strong>
         <span>{isRunning ? "Activo" : "Estimado"}</span>
@@ -844,6 +856,18 @@ function formatPixels(pixels) {
 function formatPixelsPerSecond(pixelsPerSecond) {
   if (!pixelsPerSecond) return "0 px/s";
   return `${formatPixels(pixelsPerSecond)}/s`;
+}
+
+function formatStopwatch(seconds) {
+  const total = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const restSeconds = total % 60;
+  const pad = (value) => String(value).padStart(2, "0");
+
+  return hours > 0
+    ? `${hours}:${pad(minutes)}:${pad(restSeconds)}`
+    : `${minutes}:${pad(restSeconds)}`;
 }
 
 function formatDuration(seconds) {
