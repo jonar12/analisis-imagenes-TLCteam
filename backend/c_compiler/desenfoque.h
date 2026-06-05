@@ -1,19 +1,19 @@
-extern void desenfoque_color(const char* input_path, const char* name_output, int kernel_size) {
-    FILE *image, *outputImage;
+// El desenfoque separa la E/S (lectura/escritura de archivos, que en un cluster
+// MPI viaja por red/NFS) del cómputo puro. Solo se cronometra el cómputo en
+// memoria; el tiempo devuelto en *compute_seconds NO incluye tiempo de red.
+extern void desenfoque_color(const char* input_path, const char* name_output,
+                             int kernel_size, double *compute_seconds) {
+    if (compute_seconds) *compute_seconds = 0.0;
+
     char output_path[100] = "../img/";
     strcat(output_path, name_output);
 
-    image = fopen(input_path, "rb");
-    outputImage = fopen(output_path, "wb");
+    FILE *image = fopen(input_path, "rb");
+    if (!image) { printf("Error abriendo archivos.\n"); return; }
 
-    if (!image || !outputImage) {
-        printf("Error abriendo archivos.\n");
-        return;
-    }
-
+    // ── Lectura (E/S de red, NO cronometrada) ──
     unsigned char header[54];
     fread(header, sizeof(unsigned char), 54, image);
-    fwrite(header, sizeof(unsigned char), 54, outputImage);
 
     int width = *(int*)&header[18];
     int height = *(int*)&header[22];
@@ -29,8 +29,12 @@ extern void desenfoque_color(const char* input_path, const char* name_output, in
         temp_rows[i] = (unsigned char*)malloc(row_padded);
         fread(input_rows[i], sizeof(unsigned char), row_padded, image);
     }
+    fclose(image);
 
     int k = kernel_size / 2;
+
+    // ── Cómputo (en memoria, cronometrado) ──
+    double t0 = omp_get_wtime();
 
     // Paso intermedio: desenfoque horizontal
     for (int y = 0; y < height; y++) {
@@ -88,17 +92,24 @@ extern void desenfoque_color(const char* input_path, const char* name_output, in
         }
     }
 
-    // Escritura final
+    if (compute_seconds) *compute_seconds = omp_get_wtime() - t0;
+
+    // ── Escritura (E/S de red, NO cronometrada) ──
+    FILE *outputImage = fopen(output_path, "wb");
+    if (outputImage) {
+        fwrite(header, sizeof(unsigned char), 54, outputImage);
+        for (int i = 0; i < height; i++) {
+            fwrite(output_rows[i], sizeof(unsigned char), row_padded, outputImage);
+        }
+        fclose(outputImage);
+    }
+
     for (int i = 0; i < height; i++) {
-        fwrite(output_rows[i], sizeof(unsigned char), row_padded, outputImage);
         free(input_rows[i]);
         free(temp_rows[i]);
         free(output_rows[i]);
     }
-
     free(input_rows);
     free(temp_rows);
     free(output_rows);
-    fclose(image);
-    fclose(outputImage);
 }
