@@ -39,6 +39,14 @@ static long bmp_pixel_count(const char *path) {
     return ancho * alto;
 }
 
+/* ── Rank menos cargado (greedy least-loaded) ── */
+static int least_loaded(const long long *load, int nprocs) {
+    int best = 0;
+    for (int r = 1; r < nprocs; r++)
+        if (load[r] < load[best]) best = r;
+    return best;
+}
+
 int main(int argc, char *argv[]) {
     /* ── Declarations ── */
     int myrank, nprocs, provided;
@@ -90,6 +98,11 @@ int main(int argc, char *argv[]) {
     /* Allocate task log */
     task_log = calloc(MAX_TASKS, sizeof(TaskRecord));
 
+    /* Carga acumulada (estimada) por rank, para balanceo cost-aware.
+     * Cada rank corre el MISMO bucle de asignación y obtiene el mismo
+     * resultado de forma determinista — sin necesidad de comunicación. */
+    long long *load = calloc(nprocs, sizeof(long long));
+
     /* ── Rank 0 creates output directory ── */
     if (myrank == 0) {
 #ifdef _WIN32
@@ -106,6 +119,9 @@ int main(int argc, char *argv[]) {
 
     /* ── Start timer ── */
     total_start_time = MPI_Wtime();
+    /* threads<=0 => auto: usar los núcleos de ESTE nodo. Permite que un nodo
+     * potente use más hilos que uno débil en un cluster heterogéneo. */
+    if (threads <= 0) threads = omp_get_num_procs();
     omp_set_num_threads(threads);
 
     /* ── Process images with OpenMP tasks ── */
@@ -113,8 +129,12 @@ int main(int argc, char *argv[]) {
     {
         #pragma omp single
         {
-            int task_id = 0;
-
+            /* Asignación cost-aware: cada transformación se asigna al rank
+             * menos cargado y se suma su peso estimado (≈ píxeles; el
+             * desenfoque pesa 2x por sus 2 pasadas). Todos los ranks corren
+             * este mismo bucle de forma determinista, así que cada uno sabe
+             * qué tareas le tocan sin comunicación. Reemplaza el round-robin
+             * (task_id % nprocs) que ignoraba el costo dispar de las tareas. */
             for (int i = 1; i <= n_images; i++) {
                 char input[256];
                 char out_gh[256], out_cv[256], out_ch[256], out_dc[256];
@@ -125,10 +145,14 @@ int main(int argc, char *argv[]) {
                 sprintf(out_ch, "imagen_%03d_color_horizontal.bmp", i);
                 sprintf(out_dc, "imagen_%03d_desenfoque_color.bmp",  i);
 
+                /* Todos los ranks leen la cabecera (54 B) para ponderar la
+                 * asignación por número de píxeles de cada imagen. */
                 long pixels_per_image = bmp_pixel_count(input);
 
                 if (grey_h) {
-                    if (task_id % nprocs == myrank) {
+                    int owner = least_loaded(load, nprocs);
+                    load[owner] += pixels_per_image;
+                    if (owner == myrank && task_log_n < MAX_TASKS) {
                         local_pixels += pixels_per_image;
                         int idx = task_log_n++;
                         task_log[idx].image_index = i;
@@ -137,15 +161,13 @@ int main(int argc, char *argv[]) {
                         strncpy(task_log[idx].output_file, out_gh, 255);
                         local_tasks++;
                         #pragma omp task firstprivate(input, out_gh, idx)
-                        {
-                            /* La funcion cronometra solo el computo (sin E/S de red) */
-                            inv_img_grey_horizontal(out_gh, input, &task_log[idx].time_seconds);
-                        }
+                        { inv_img_grey_horizontal(out_gh, input, &task_log[idx].time_seconds); }
                     }
-                    task_id++;
                 }
                 if (color_v) {
-                    if (task_id % nprocs == myrank) {
+                    int owner = least_loaded(load, nprocs);
+                    load[owner] += pixels_per_image;
+                    if (owner == myrank && task_log_n < MAX_TASKS) {
                         local_pixels += pixels_per_image;
                         int idx = task_log_n++;
                         task_log[idx].image_index = i;
@@ -154,15 +176,13 @@ int main(int argc, char *argv[]) {
                         strncpy(task_log[idx].output_file, out_cv, 255);
                         local_tasks++;
                         #pragma omp task firstprivate(input, out_cv, idx)
-                        {
-                            /* La funcion cronometra solo el computo (sin E/S de red) */
-                            inv_img_color_vertical(out_cv, input, &task_log[idx].time_seconds);
-                        }
+                        { inv_img_color_vertical(out_cv, input, &task_log[idx].time_seconds); }
                     }
-                    task_id++;
                 }
                 if (color_h) {
-                    if (task_id % nprocs == myrank) {
+                    int owner = least_loaded(load, nprocs);
+                    load[owner] += pixels_per_image;
+                    if (owner == myrank && task_log_n < MAX_TASKS) {
                         local_pixels += pixels_per_image;
                         int idx = task_log_n++;
                         task_log[idx].image_index = i;
@@ -171,15 +191,14 @@ int main(int argc, char *argv[]) {
                         strncpy(task_log[idx].output_file, out_ch, 255);
                         local_tasks++;
                         #pragma omp task firstprivate(input, out_ch, idx)
-                        {
-                            /* La funcion cronometra solo el computo (sin E/S de red) */
-                            inv_img_color_horizontal(out_ch, input, &task_log[idx].time_seconds);
-                        }
+                        { inv_img_color_horizontal(out_ch, input, &task_log[idx].time_seconds); }
                     }
-                    task_id++;
                 }
                 if (blur_color) {
-                    if (task_id % nprocs == myrank) {
+                    /* El desenfoque hace 2 pasadas por píxel => peso 2x. */
+                    int owner = least_loaded(load, nprocs);
+                    load[owner] += 2 * pixels_per_image;
+                    if (owner == myrank && task_log_n < MAX_TASKS) {
                         local_pixels += pixels_per_image;
                         int idx = task_log_n++;
                         task_log[idx].image_index = i;
@@ -188,12 +207,8 @@ int main(int argc, char *argv[]) {
                         strncpy(task_log[idx].output_file, out_dc, 255);
                         local_tasks++;
                         #pragma omp task firstprivate(input, out_dc, idx, kernel_color)
-                        {
-                            /* La funcion cronometra solo el computo (sin E/S de red) */
-                            desenfoque_color(input, out_dc, kernel_color, &task_log[idx].time_seconds);
-                        }
+                        { desenfoque_color(input, out_dc, kernel_color, &task_log[idx].time_seconds); }
                     }
-                    task_id++;
                 }
             }
             #pragma omp taskwait
@@ -293,6 +308,7 @@ int main(int argc, char *argv[]) {
     }
 
     free(task_log);
+    free(load);
     MPI_Finalize();
     return 0;
 }

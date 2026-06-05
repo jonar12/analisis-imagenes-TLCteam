@@ -27,12 +27,14 @@ extern void inv_img_grey_vertical(char *name, char *path, double *compute_second
 
     // ── Cómputo (en memoria, cronometrado) ──
     double t0 = omp_get_wtime();
+    #pragma omp parallel for schedule(static)
     for (long p = 0; p < npix; p++) {
         unsigned char b = raw[p*3];
         unsigned char g = raw[p*3+1];
         unsigned char r = raw[p*3+2];
         grey[p] = 0.21*r + 0.72*g + 0.07*b;
     }
+    #pragma omp parallel for schedule(static)
     for (long row = 0; row < alto; row++) {
         for (long col = 0; col < ancho; col++) {
             long src = row * ancho + (ancho - 1 - col);
@@ -77,12 +79,14 @@ extern void inv_img_grey_horizontal(char *name, char *path, double *compute_seco
 
     // ── Cómputo (en memoria, cronometrado) ──
     double t0 = omp_get_wtime();
+    #pragma omp parallel for schedule(static)
     for (long p = 0; p < npix; p++) {
         unsigned char b = raw[p*3];
         unsigned char g = raw[p*3+1];
         unsigned char r = raw[p*3+2];
         grey[p] = 0.21*r + 0.72*g + 0.07*b;
     }
+    #pragma omp parallel for schedule(static)
     for (long i = 0; i < npix; i++) {
         out[i*3] = out[i*3+1] = out[i*3+2] = grey[npix - 1 - i];
     }
@@ -122,8 +126,9 @@ extern void inv_img_color_vertical(char *name, char *path, double *compute_secon
 
     // ── Cómputo (en memoria, cronometrado) ──
     double t0 = omp_get_wtime();
-    long o = 0;
+    #pragma omp parallel for schedule(static)
     for (long row = 0; row < alto; row++) {
+        long o = row * ancho * 3;
         for (long col = 0; col < ancho; col++) {
             long idx = (row * ancho + (ancho - 1 - col)) * 3;
             out[o++] = raw[idx];     // B
@@ -167,6 +172,7 @@ extern void inv_img_color_horizontal(char *name, char *path, double *compute_sec
 
     // ── Cómputo (en memoria, cronometrado) ──
     double t0 = omp_get_wtime();
+    #pragma omp parallel for schedule(static)
     for (long i = 0; i < npix; i++) {
         long s = (npix - 1 - i) * 3;
         out[i*3]   = raw[s];     // B
