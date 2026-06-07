@@ -89,6 +89,76 @@ const LOCAL_ELECTRICITY_SCENARIOS = [
   { name: "Intermedia", rate: 3.5, primary: true },
   { name: "DAC", rate: 6.5 },
 ];
+const COST_SCENARIOS = {
+  current: "current",
+  modern: "modern",
+};
+const MODERN_WORKSTATIONS = [
+  {
+    replaces: "Fernando",
+    model: "Dell Pro Max Tower",
+    cpu: "Core Ultra 7 265",
+    memory: "32 GB",
+    gpu: "RTX A1000",
+    price: 52929,
+  },
+  {
+    replaces: "Jonathan",
+    model: "Dell Pro Max Tower",
+    cpu: "Core Ultra 7 265",
+    memory: "32 GB",
+    gpu: "RTX A1000",
+    price: 52929,
+  },
+  {
+    replaces: "Pablo",
+    model: "Dell Pro Max MFF",
+    cpu: "Core Ultra 7 265",
+    memory: "16 GB",
+    gpu: "Integrada",
+    price: 45269,
+  },
+  {
+    replaces: "Rusbel",
+    model: "Dell Pro Max MFF",
+    cpu: "Core Ultra 7 265",
+    memory: "16 GB",
+    gpu: "Integrada",
+    price: 45269,
+  },
+  {
+    replaces: "Diego",
+    model: "Dell Pro Max Slim",
+    cpu: "Core Ultra 7 265K",
+    memory: "16 GB",
+    gpu: "RTX A1000",
+    price: 44719,
+  },
+];
+const MODERN_POWER_GROUPS = [
+  {
+    model: "Dell Pro Max Tower",
+    count: 2,
+    wattsEach: 250,
+  },
+  {
+    model: "Dell Pro Max MFF",
+    count: 2,
+    wattsEach: 120,
+  },
+  {
+    model: "Dell Pro Max Slim",
+    count: 1,
+    wattsEach: 280,
+  },
+];
+const MODERN_SHIPPING_MXN = 1106;
+const MODERN_DEDICATED_NETWORK_ANNUAL_MXN = 6000;
+const MODERN_AWS_INSTANCE = {
+  type: "c6i.5xlarge",
+  count: 5,
+  monthlyCostEach: 155.13,
+};
 
 function App() {
   const fileInputRef = useRef(null);
@@ -106,6 +176,7 @@ function App() {
   const [progressState, setProgressState] = useState(null);
   const [progressTick, setProgressTick] = useState(0);
   const [isCostModalOpen, setIsCostModalOpen] = useState(false);
+  const [costScenario, setCostScenario] = useState(null);
 
   const selectedTransforms = useMemo(
     () => TRANSFORMATIONS.filter((item) => transforms[item.key]),
@@ -614,7 +685,10 @@ function App() {
               <button
                 className="mini-button"
                 type="button"
-                onClick={() => setIsCostModalOpen(true)}
+                onClick={() => {
+                  setCostScenario(null);
+                  setIsCostModalOpen(true);
+                }}
               >
                 <Cloud size={16} aria-hidden="true" />
                 Costos
@@ -668,13 +742,24 @@ function App() {
       </main>
 
       {isCostModalOpen && (
-        <CostComparisonModal onClose={() => setIsCostModalOpen(false)} />
+        <CostComparisonModal
+          scenario={costScenario}
+          onBack={() => setCostScenario(null)}
+          onChoose={setCostScenario}
+          onClose={() => setIsCostModalOpen(false)}
+        />
       )}
     </div>
   );
 }
 
-function CostComparisonModal({ onClose }) {
+function CostComparisonModal({ scenario, onBack, onChoose, onClose }) {
+  const title = scenario === COST_SCENARIOS.modern
+    ? "Workstations modernas vs AWS"
+    : scenario === COST_SCENARIOS.current
+      ? "Granja local actual vs AWS"
+      : "Seleccionar cotizacion";
+
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
       <section
@@ -687,19 +772,53 @@ function CostComparisonModal({ onClose }) {
         <div className="modal-heading">
           <div>
             <span>Operacion anual</span>
-            <h2 id="cost-comparison-title">Granja local actual vs AWS</h2>
+            <h2 id="cost-comparison-title">{title}</h2>
           </div>
+          {scenario && (
+            <button className="mini-button" type="button" onClick={onBack}>
+              Cambiar
+            </button>
+          )}
           <button className="icon-button" type="button" aria-label="Cerrar" onClick={onClose}>
             <X size={18} aria-hidden="true" />
           </button>
         </div>
-        <CostComparison />
+        {scenario === COST_SCENARIOS.current && <CurrentCostComparison />}
+        {scenario === COST_SCENARIOS.modern && <ModernCostComparison />}
+        {!scenario && <CostScenarioPicker onChoose={onChoose} />}
       </section>
     </div>
   );
 }
 
-function CostComparison() {
+function CostScenarioPicker({ onChoose }) {
+  return (
+    <div className="cost-scenario-grid">
+      <button
+        className="cost-scenario-card"
+        type="button"
+        onClick={() => onChoose(COST_SCENARIOS.current)}
+      >
+        <Cpu size={22} aria-hidden="true" />
+        <span>Equipos actuales</span>
+        <strong>Solo costo electrico local</strong>
+        <small>Compara la granja existente contra la cotizacion EC2 original.</small>
+      </button>
+      <button
+        className="cost-scenario-card"
+        type="button"
+        onClick={() => onChoose(COST_SCENARIOS.modern)}
+      >
+        <Cloud size={22} aria-hidden="true" />
+        <span>Equipos modernos presupuestados</span>
+        <strong>Incluye compra de hardware</strong>
+        <small>Compara workstations nuevas contra AWS equivalente de 20 vCPUs por nodo.</small>
+      </button>
+    </div>
+  );
+}
+
+function CurrentCostComparison() {
   const monthlyCost = AWS_INSTANCES.reduce((sum, item) => sum + item.monthlyCost, 0);
   const annualCost = monthlyCost * 12;
   const monthlyCostMxn = monthlyCost * USD_TO_MXN;
@@ -828,6 +947,156 @@ function CostComparison() {
         ni snapshots. El costo local base equivale a {formatUsd(primaryLocalAnnualUsd)}/año.
         La conectividad por Internet y Tailscale se considera un costo indirecto porque ya existia
         para los integrantes; si se contratara Internet dedicado, tendria que sumarse al costo local.
+      </p>
+    </div>
+  );
+}
+
+function ModernCostComparison() {
+  const hardwareSubtotal = MODERN_WORKSTATIONS.reduce((sum, item) => sum + item.price, 0);
+  const capex = hardwareSubtotal + MODERN_SHIPPING_MXN;
+  const annualKwh = MODERN_POWER_GROUPS.reduce(
+    (sum, item) => sum + ((item.count * item.wattsEach) / 1000) * AWS_ANNUAL_HOURS,
+    0,
+  );
+  const totalWatts = MODERN_POWER_GROUPS.reduce(
+    (sum, item) => sum + item.count * item.wattsEach,
+    0,
+  );
+  const electricityAnnual = annualKwh * 3.5;
+  const operationWithNetwork = electricityAnnual + MODERN_DEDICATED_NETWORK_ANNUAL_MXN;
+  const firstYearLocal = capex + electricityAnnual;
+  const firstYearLocalWithNetwork = capex + operationWithNetwork;
+  const awsMonthly = MODERN_AWS_INSTANCE.count * MODERN_AWS_INSTANCE.monthlyCostEach;
+  const awsAnnual = awsMonthly * 12;
+  const awsAnnualMxn = awsAnnual * USD_TO_MXN;
+  const breakEven = capex / (awsAnnualMxn - electricityAnnual);
+  const breakEvenWithNetwork = capex / (awsAnnualMxn - operationWithNetwork);
+
+  const summaryItems = [
+    { label: "Nodos nuevos", value: MODERN_WORKSTATIONS.length },
+    { label: "CAPEX", value: formatMxn(capex) },
+    { label: "Consumo estimado", value: `${totalWatts} W / ${annualKwh.toFixed(1)} kWh` },
+    { label: "Operacion local", value: `${formatMxn(electricityAnnual)}/año` },
+    { label: "AWS actualizado", value: `${formatMxn(awsAnnualMxn)}/año` },
+    { label: "Punto de equilibrio", value: `${breakEven.toFixed(2)} años` },
+  ];
+
+  return (
+    <div className="cost-comparison">
+      <div className="cost-hero">
+        <div className="cost-hero-card local">
+          <span>Nueva granja local</span>
+          <strong>{formatMxn(firstYearLocal)}/año 1</strong>
+          <small>
+            Incluye {formatMxn(capex)} de compra y {formatMxn(electricityAnnual)}/año de
+            electricidad.
+          </small>
+        </div>
+        <div className="cost-hero-card aws">
+          <span>AWS equivalente actualizado</span>
+          <strong>{formatUsd(awsAnnual)}/año</strong>
+          <small>{MODERN_AWS_INSTANCE.count} instancias {MODERN_AWS_INSTANCE.type}, 40 h/semana.</small>
+        </div>
+      </div>
+
+      <div className="cost-summary-grid">
+        {summaryItems.map((item) => (
+          <div key={item.label}>
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+          </div>
+        ))}
+      </div>
+
+      <div className="cost-table" aria-label="Comparacion de workstations nuevas contra AWS">
+        <div className="cost-table-row cost-table-head">
+          <span>Escenario</span>
+          <span>Primer año</span>
+          <span>Años siguientes</span>
+        </div>
+        <div className="cost-table-row is-primary">
+          <strong>Nueva granja local, solo electricidad</strong>
+          <span>{formatMxn(firstYearLocal)}</span>
+          <span>{formatMxn(electricityAnnual)}/año</span>
+        </div>
+        <div className="cost-table-row">
+          <strong>Nueva granja local + Internet dedicado</strong>
+          <span>{formatMxn(firstYearLocalWithNetwork)}</span>
+          <span>{formatMxn(operationWithNetwork)}/año</span>
+        </div>
+        <div className="cost-table-row">
+          <strong>AWS equivalente actualizado</strong>
+          <span>{formatMxn(awsAnnualMxn)}</span>
+          <span>{formatMxn(awsAnnualMxn)}/año</span>
+        </div>
+      </div>
+
+      <div className="local-node-table" aria-label="Workstations presupuestadas">
+        <div className="modern-node-row local-node-head">
+          <span>Reemplaza</span>
+          <span>Equipo</span>
+          <span>RAM/GPU</span>
+          <span>Precio</span>
+        </div>
+        {MODERN_WORKSTATIONS.map((item) => (
+          <div className="modern-node-row" key={item.replaces}>
+            <strong>{item.replaces}</strong>
+            <span>
+              {item.model}
+              <small>{item.cpu}</small>
+            </span>
+            <span>
+              {item.memory}
+              <small>{item.gpu}</small>
+            </span>
+            <span>{formatMxn(item.price)}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="local-node-table" aria-label="Consumo estimado de workstations">
+        <div className="local-node-row local-node-head">
+          <span>Equipo</span>
+          <span>Potencia</span>
+          <span>Energia anual</span>
+        </div>
+        {MODERN_POWER_GROUPS.map((item) => {
+          const groupWatts = item.count * item.wattsEach;
+          const groupKwh = (groupWatts / 1000) * AWS_ANNUAL_HOURS;
+
+          return (
+            <div className="local-node-row" key={item.model}>
+              <strong>
+                {item.model}
+                <small>{item.count} equipos</small>
+              </strong>
+              <span>{groupWatts} W</span>
+              <span>{groupKwh.toFixed(1)} kWh/año</span>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="cost-table" aria-label="Punto de equilibrio de workstations">
+        <div className="cost-table-row cost-table-head">
+          <span>Calculo</span>
+          <span>Sin red dedicada</span>
+          <span>Con red dedicada</span>
+        </div>
+        <div className="cost-table-row">
+          <strong>Punto de equilibrio</strong>
+          <span>{breakEven.toFixed(2)} años</span>
+          <span>{breakEvenWithNetwork.toFixed(2)} años</span>
+        </div>
+      </div>
+
+      <p className="cost-note">
+        Este escenario incluye compra de equipos, envio estimado y electricidad. AWS se extrapolo
+        con {MODERN_AWS_INSTANCE.type} para representar nodos de 20 vCPUs. Durante el primer año,
+        AWS evita el CAPEX; para uso estable por mas de 1.6 años, comprar workstations puede ser
+        mas rentable. Los precios pueden cambiar segun disponibilidad, envio, IVA, garantias y tipo
+        de cambio.
       </p>
     </div>
   );

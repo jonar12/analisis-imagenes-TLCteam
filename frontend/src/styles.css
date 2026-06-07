@@ -758,6 +758,57 @@ button:disabled {
   line-height: 1.12;
 }
 
+.modal-heading .mini-button {
+  flex-shrink: 0;
+}
+
+.cost-scenario-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.cost-scenario-card {
+  display: grid;
+  gap: 8px;
+  min-height: 178px;
+  align-content: start;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfd;
+  color: var(--ink);
+  padding: 16px;
+  text-align: left;
+}
+
+.cost-scenario-card:hover {
+  border-color: var(--blue);
+  background: #f2f6fb;
+}
+
+.cost-scenario-card svg {
+  color: var(--blue);
+}
+
+.cost-scenario-card span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.cost-scenario-card strong {
+  font-size: 20px;
+  line-height: 1.15;
+}
+
+.cost-scenario-card small {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
 .cost-comparison {
   display: grid;
   gap: 14px;
@@ -842,6 +893,7 @@ button:disabled {
 
 .cost-table-row,
 .local-node-row,
+.modern-node-row,
 .aws-instance-row {
   display: grid;
   gap: 8px;
@@ -859,12 +911,17 @@ button:disabled {
   grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.8fr) minmax(0, 1fr);
 }
 
+.modern-node-row {
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, 0.9fr);
+}
+
 .aws-instance-row {
   grid-template-columns: 1fr 1.25fr 0.7fr 1fr;
 }
 
 .cost-table-row:first-child,
 .local-node-row:first-child,
+.modern-node-row:first-child,
 .aws-instance-row:first-child {
   border-top: 0;
 }
@@ -873,6 +930,8 @@ button:disabled {
 .cost-table-row strong,
 .local-node-row span,
 .local-node-row strong,
+.modern-node-row span,
+.modern-node-row strong,
 .aws-instance-row span,
 .aws-instance-row strong {
   overflow-wrap: anywhere;
@@ -881,6 +940,7 @@ button:disabled {
 
 .cost-table-row span,
 .local-node-row span,
+.modern-node-row span,
 .aws-instance-row span {
   color: var(--muted);
   font-weight: 700;
@@ -888,16 +948,19 @@ button:disabled {
 
 .cost-table-row strong,
 .local-node-row strong,
+.modern-node-row strong,
 .aws-instance-row strong {
   color: var(--ink);
 }
 
-.local-node-row strong {
+.local-node-row strong,
+.modern-node-row span {
   display: grid;
   gap: 2px;
 }
 
-.local-node-row small {
+.local-node-row small,
+.modern-node-row small {
   color: var(--muted);
   font-size: 11px;
   font-weight: 700;
@@ -921,6 +984,7 @@ button:disabled {
 
 .cost-table-head span,
 .local-node-head span,
+.modern-node-row.local-node-head span,
 .aws-instance-head span {
   color: var(--ink);
   font-size: 11px;
@@ -1144,6 +1208,7 @@ button:disabled {
   .output-gallery,
   .eta-panel,
   .eta-details,
+  .cost-scenario-grid,
   .cost-hero,
   .cost-summary-grid {
     grid-template-columns: 1fr;
@@ -1151,6 +1216,7 @@ button:disabled {
 
   .cost-table-row,
   .local-node-row,
+  .modern-node-row,
   .aws-instance-row {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
