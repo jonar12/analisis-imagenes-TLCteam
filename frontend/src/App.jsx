@@ -4,6 +4,7 @@ import {
   BarChart3,
   Check,
   Clock3,
+  Cloud,
   Cpu,
   Download,
   FolderOpen,
@@ -51,6 +52,44 @@ const TEAM_MEMBERS = [
   { name: "Fernando Maggi Llerandi", id: "A01736935" },
 ];
 
+const AWS_WEEKLY_HOURS = 40;
+const AWS_ANNUAL_HOURS = AWS_WEEKLY_HOURS * 52;
+const AWS_REGION = "Mexico (Central)";
+const AWS_PAYMENT_OPTION = "On-Demand";
+const USD_TO_MXN = 17.48;
+const AWS_INSTANCES = [
+  {
+    type: "c6i.4xlarge",
+    count: 2,
+    representedNodes: "Fernando + Jonathan",
+    monthlyCost: 248.2,
+  },
+  {
+    type: "c6i.2xlarge",
+    count: 2,
+    representedNodes: "Rusbel + Diego",
+    monthlyCost: 124.1,
+  },
+  {
+    type: "m6i.xlarge",
+    count: 1,
+    representedNodes: "Pablo",
+    monthlyCost: 35.04,
+  },
+];
+const LOCAL_POWER_NODES = [
+  { owner: "Fernando Maggi", computer: "HP Pavilion 15", watts: 60 },
+  { owner: "Jonathan", computer: "PC de escritorio personalizada", watts: 150 },
+  { owner: "Pablo", computer: "HP Envy x360 m6", watts: 45 },
+  { owner: "Rusbel", computer: "Huawei MateBook 13s", watts: 65 },
+  { owner: "Diego", computer: "Laptop personal", watts: 45 },
+];
+const LOCAL_ELECTRICITY_SCENARIOS = [
+  { name: "Subsidiada", rate: 1.5 },
+  { name: "Intermedia", rate: 3.5, primary: true },
+  { name: "DAC", rate: 6.5 },
+];
+
 function App() {
   const fileInputRef = useRef(null);
   const [files, setFiles] = useState([]);
@@ -66,6 +105,7 @@ function App() {
   const [history, setHistory] = useState([]);
   const [progressState, setProgressState] = useState(null);
   const [progressTick, setProgressTick] = useState(0);
+  const [isCostModalOpen, setIsCostModalOpen] = useState(false);
 
   const selectedTransforms = useMemo(
     () => TRANSFORMATIONS.filter((item) => transforms[item.key]),
@@ -97,6 +137,23 @@ function App() {
 
     return () => window.clearInterval(interval);
   }, [status]);
+
+  useEffect(() => {
+    if (!isCostModalOpen) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function closeOnEscape(event) {
+      if (event.key === "Escape") setIsCostModalOpen(false);
+    }
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isCostModalOpen]);
 
   async function addFiles(fileList) {
     const incoming = Array.from(fileList ?? []);
@@ -554,6 +611,14 @@ function App() {
             <div className="section-heading">
               <BarChart3 size={20} aria-hidden="true" />
               <h2>Tiempo por corrida</h2>
+              <button
+                className="mini-button"
+                type="button"
+                onClick={() => setIsCostModalOpen(true)}
+              >
+                <Cloud size={16} aria-hidden="true" />
+                Costos
+              </button>
             </div>
             <TimeChart history={history} />
           </section>
@@ -601,6 +666,169 @@ function App() {
           )}
         </aside>
       </main>
+
+      {isCostModalOpen && (
+        <CostComparisonModal onClose={() => setIsCostModalOpen(false)} />
+      )}
+    </div>
+  );
+}
+
+function CostComparisonModal({ onClose }) {
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="comparison-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cost-comparison-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="modal-heading">
+          <div>
+            <span>Operacion anual</span>
+            <h2 id="cost-comparison-title">Granja local actual vs AWS</h2>
+          </div>
+          <button className="icon-button" type="button" aria-label="Cerrar" onClick={onClose}>
+            <X size={18} aria-hidden="true" />
+          </button>
+        </div>
+        <CostComparison />
+      </section>
+    </div>
+  );
+}
+
+function CostComparison() {
+  const monthlyCost = AWS_INSTANCES.reduce((sum, item) => sum + item.monthlyCost, 0);
+  const annualCost = monthlyCost * 12;
+  const monthlyCostMxn = monthlyCost * USD_TO_MXN;
+  const annualCostMxn = annualCost * USD_TO_MXN;
+  const instanceCount = AWS_INSTANCES.reduce((sum, item) => sum + item.count, 0);
+  const localWatts = LOCAL_POWER_NODES.reduce((sum, item) => sum + item.watts, 0);
+  const localAnnualKwh = (localWatts / 1000) * AWS_ANNUAL_HOURS;
+  const primaryScenario = LOCAL_ELECTRICITY_SCENARIOS.find((item) => item.primary);
+  const primaryLocalAnnualMxn = localAnnualKwh * primaryScenario.rate;
+  const primaryLocalMonthlyMxn = primaryLocalAnnualMxn / 12;
+  const primaryLocalAnnualUsd = primaryLocalAnnualMxn / USD_TO_MXN;
+  const awsCostRatio = annualCostMxn / primaryLocalAnnualMxn;
+
+  const summaryItems = [
+    { label: "Uso", value: "8 h/dia, lunes a viernes" },
+    { label: "Horas al año", value: `${AWS_ANNUAL_HOURS.toLocaleString("en-US")} h` },
+    { label: "Consumo local", value: `${localWatts} W / ${localAnnualKwh.toFixed(1)} kWh` },
+    { label: "Instancias AWS", value: instanceCount },
+    { label: "Costo local base", value: `${formatMxn(primaryLocalAnnualMxn)}/año` },
+    { label: "AWS EC2", value: `${formatMxn(annualCostMxn)}/año` },
+    { label: "Diferencia", value: `AWS cuesta ${awsCostRatio.toFixed(2)}x mas` },
+  ];
+
+  return (
+    <div className="cost-comparison">
+      <div className="cost-hero">
+        <div className="cost-hero-card local">
+          <span>Granja local actual</span>
+          <strong>{formatMxn(primaryLocalAnnualMxn)}/año</strong>
+          <small>
+            {formatMxn(primaryLocalMonthlyMxn)}/mes, escenario intermedio de 3.50 MXN/kWh
+          </small>
+        </div>
+        <div className="cost-hero-card aws">
+          <span>AWS EC2 equivalente</span>
+          <strong>{formatUsd(annualCost)}/año</strong>
+          <small>{formatMxn(annualCostMxn)}/año al tipo de cambio {USD_TO_MXN} MXN/USD</small>
+        </div>
+      </div>
+
+      <div className="cost-summary-grid">
+        {summaryItems.map((item) => (
+          <div key={item.label}>
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+          </div>
+        ))}
+      </div>
+
+      <div className="cost-table" aria-label="Escenarios de costo electrico local contra AWS">
+        <div className="cost-table-row cost-table-head">
+          <span>Concepto</span>
+          <span>Costo mensual</span>
+          <span>Costo anual</span>
+        </div>
+        {LOCAL_ELECTRICITY_SCENARIOS.map((scenario) => {
+          const annualMxn = localAnnualKwh * scenario.rate;
+          const monthlyMxn = annualMxn / 12;
+
+          return (
+            <div
+              className={`cost-table-row${scenario.primary ? " is-primary" : ""}`}
+              key={scenario.name}
+            >
+              <strong>Local, tarifa {scenario.name}</strong>
+              <span>{formatMxn(monthlyMxn)}</span>
+              <span>{formatMxn(annualMxn)}</span>
+            </div>
+          );
+        })}
+        <div className="cost-table-row">
+          <strong>AWS EC2 equivalente</strong>
+          <span>{formatMxn(monthlyCostMxn)}</span>
+          <span>{formatMxn(annualCostMxn)}</span>
+        </div>
+        <div className="cost-table-row">
+          <strong>AWS EC2 equivalente</strong>
+          <span>{formatUsd(monthlyCost)}</span>
+          <span>{formatUsd(annualCost)}</span>
+        </div>
+      </div>
+
+      <div className="local-node-table" aria-label="Consumo electrico estimado por equipo">
+        <div className="local-node-row local-node-head">
+          <span>Equipo</span>
+          <span>Potencia</span>
+          <span>Energia anual</span>
+        </div>
+        {LOCAL_POWER_NODES.map((item) => {
+          const annualKwh = (item.watts / 1000) * AWS_ANNUAL_HOURS;
+
+          return (
+            <div className="local-node-row" key={item.owner}>
+              <strong>
+                {item.owner}
+                <small>{item.computer}</small>
+              </strong>
+              <span>{item.watts} W</span>
+              <span>{annualKwh.toFixed(1)} kWh/año</span>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="aws-instance-table" aria-label="Instancias AWS cotizadas">
+        <div className="aws-instance-row aws-instance-head">
+          <span>Instancia</span>
+          <span>Nodos locales</span>
+          <span>Cantidad</span>
+          <span>Costo mensual</span>
+        </div>
+        {AWS_INSTANCES.map((item) => (
+          <div className="aws-instance-row" key={item.type}>
+            <strong>{item.type}</strong>
+            <span>{item.representedNodes}</span>
+            <span>{item.count}</span>
+            <span>{formatUsd(item.monthlyCost)}</span>
+          </div>
+        ))}
+      </div>
+
+      <p className="cost-note">
+        La comparacion local usa solo electricidad con equipos ya disponibles. AWS se modelo con
+        Amazon EC2 en {AWS_REGION}, Linux, tenancy shared, {AWS_PAYMENT_OPTION}, monitoreo
+        desactivado y sin transferencia de datos. No incluye impuestos, almacenamiento persistente
+        ni snapshots. El costo local base equivale a {formatUsd(primaryLocalAnnualUsd)}/año.
+        La conectividad por Internet y Tailscale se considera un costo indirecto porque ya existia
+        para los integrantes; si se contratara Internet dedicado, tendria que sumarse al costo local.
+      </p>
     </div>
   );
 }
@@ -856,6 +1084,20 @@ function formatPixels(pixels) {
 function formatPixelsPerSecond(pixelsPerSecond) {
   if (!pixelsPerSecond) return "0 px/s";
   return `${formatPixels(pixelsPerSecond)}/s`;
+}
+
+function formatUsd(value) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(value);
+}
+
+function formatMxn(value) {
+  return new Intl.NumberFormat("es-MX", {
+    style: "currency",
+    currency: "MXN",
+  }).format(value);
 }
 
 function formatStopwatch(seconds) {

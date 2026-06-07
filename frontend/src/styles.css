@@ -702,6 +702,240 @@ button:disabled {
   line-height: 1.45;
 }
 
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background: rgba(20, 28, 38, 0.52);
+  padding: 22px;
+}
+
+.comparison-modal {
+  display: grid;
+  gap: 16px;
+  width: min(940px, 100%);
+  max-height: min(860px, calc(100vh - 44px));
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 30px 90px rgba(10, 18, 28, 0.28);
+  padding: 20px;
+}
+
+.modal-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.modal-heading div {
+  display: grid;
+  gap: 5px;
+}
+
+.modal-heading span,
+.cost-hero-card span,
+.cost-summary-grid span,
+.cost-note {
+  color: var(--muted);
+}
+
+.modal-heading span,
+.cost-hero-card span,
+.cost-summary-grid span {
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.modal-heading h2 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.12;
+}
+
+.cost-comparison {
+  display: grid;
+  gap: 14px;
+}
+
+.cost-hero {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.cost-hero-card {
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 15px;
+}
+
+.cost-hero-card.local {
+  border-color: color-mix(in srgb, var(--teal) 40%, var(--line));
+  background: var(--teal-soft);
+}
+
+.cost-hero-card.aws {
+  border-color: color-mix(in srgb, var(--blue) 40%, var(--line));
+  background: var(--blue-soft);
+}
+
+.cost-hero-card strong {
+  font-size: 26px;
+  line-height: 1.12;
+}
+
+.cost-hero-card.local strong {
+  color: #0c5857;
+}
+
+.cost-hero-card.aws strong {
+  color: #174675;
+}
+
+.cost-hero-card small {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.cost-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cost-summary-grid div {
+  display: grid;
+  gap: 5px;
+  min-height: 64px;
+  align-content: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 11px;
+}
+
+.cost-summary-grid strong {
+  overflow-wrap: anywhere;
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.cost-table,
+.local-node-table,
+.aws-instance-table {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.cost-table-row,
+.local-node-row,
+.aws-instance-row {
+  display: grid;
+  gap: 8px;
+  align-items: center;
+  min-height: 42px;
+  border-top: 1px solid var(--line);
+  padding: 9px 11px;
+}
+
+.cost-table-row {
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.local-node-row {
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.8fr) minmax(0, 1fr);
+}
+
+.aws-instance-row {
+  grid-template-columns: 1fr 1.25fr 0.7fr 1fr;
+}
+
+.cost-table-row:first-child,
+.local-node-row:first-child,
+.aws-instance-row:first-child {
+  border-top: 0;
+}
+
+.cost-table-row span,
+.cost-table-row strong,
+.local-node-row span,
+.local-node-row strong,
+.aws-instance-row span,
+.aws-instance-row strong {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.cost-table-row span,
+.local-node-row span,
+.aws-instance-row span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.cost-table-row strong,
+.local-node-row strong,
+.aws-instance-row strong {
+  color: var(--ink);
+}
+
+.local-node-row strong {
+  display: grid;
+  gap: 2px;
+}
+
+.local-node-row small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.cost-table-row.is-primary {
+  background: #f0f8f8;
+}
+
+.cost-table-row.is-primary strong {
+  color: #0c5857;
+}
+
+.cost-table-head,
+.local-node-head,
+.aws-instance-head {
+  min-height: 36px;
+  background: #f0f3f6;
+}
+
+.cost-table-head span,
+.local-node-head span,
+.aws-instance-head span {
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.cost-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
 .comparison-table {
   display: grid;
   grid-column: 1 / -1;
@@ -897,6 +1131,11 @@ button:disabled {
     flex-wrap: wrap;
   }
 
+  .comparison-modal {
+    max-height: calc(100vh - 22px);
+    padding: 14px;
+  }
+
   .file-list,
   .transform-grid,
   .kernel-row,
@@ -904,8 +1143,22 @@ button:disabled {
   .mode-control,
   .output-gallery,
   .eta-panel,
-  .eta-details {
+  .eta-details,
+  .cost-hero,
+  .cost-summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .cost-table-row,
+  .local-node-row,
+  .aws-instance-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .cost-table-head,
+  .local-node-head,
+  .aws-instance-head {
+    display: none;
   }
 
   .eta-ring {
