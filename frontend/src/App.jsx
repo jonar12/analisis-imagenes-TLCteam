@@ -25,7 +25,8 @@ const MAX_FILES = 250;
 const MIN_BMP_SIDE = 2000;
 const KERNEL_MIN = 55;
 const KERNEL_MAX = 155;
-const DEFAULT_PIXELS_PER_SECOND = 60_000_000;
+const LOG_CALIBRATED_PIXELS_PER_SECOND = 3_688_628;
+const DEFAULT_PIXELS_PER_SECOND = LOG_CALIBRATED_PIXELS_PER_SECOND;
 const THREAD_OPTIONS = [6, 12, 18];
 const THREAD_MODES = {
   single: "single",
@@ -1127,6 +1128,7 @@ function WorkloadProgress({ activeThread, progress, status, tick, workload }) {
   const remainingSeconds = isRunning
     ? Math.max(0, estimatedSeconds - elapsedSeconds)
     : estimatedSeconds;
+  const isFinalizing = isRunning && hasWorkload && estimatedSeconds > 0 && elapsedSeconds >= estimatedSeconds;
   const percent = Math.round(progressRatio * 100);
   const stage = activeThread
     ? `${activeThread} hilos`
@@ -1145,9 +1147,12 @@ function WorkloadProgress({ activeThread, progress, status, tick, workload }) {
         <span className="eta-timer-value">{formatStopwatch(elapsedSeconds)}</span>
         <span className="eta-timer-label">{timerLabel}</span>
       </div>
-      <div className="eta-ring" style={{ "--progress-deg": `${progressRatio * 360}deg` }}>
-        <strong>{percent}%</strong>
-        <span>{isRunning ? "Activo" : "Estimado"}</span>
+      <div
+        className={`eta-ring${isFinalizing ? " is-finalizing" : ""}`}
+        style={{ "--progress-deg": `${progressRatio * 360}deg` }}
+      >
+        <strong>{isFinalizing ? "Finalizando" : `${percent}%`}</strong>
+        <span>{isFinalizing ? "VPN" : isRunning ? "Activo" : "Estimado"}</span>
       </div>
       <div className="eta-details">
         <div>
