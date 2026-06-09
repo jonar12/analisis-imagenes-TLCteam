@@ -1,0 +1,73 @@
+# Backend (FastAPI)
+
+API en FastAPI para procesar imagenes. Esta guia explica como preparar el entorno virtual (`venv`) e instalar las dependencias de `requirements.txt`.
+
+## Requisitos
+
+- Python 3.10+ instalado y disponible en el `PATH`.
+- `pip` (viene con Python).
+
+Verifica tu version:
+
+```bash
+python3 --version
+```
+
+## 1. Crear el entorno virtual
+
+Desde la carpeta `backend/`:
+
+```bash
+python3 -m venv venv
+```
+
+Esto crea la carpeta `backend/venv/` con un Python aislado del sistema.
+
+## 2. Activar el venv
+
+```bash
+source venv/bin/activate
+```
+
+Sabras que esta activo cuando el prompt muestre `(venv)` al inicio.
+
+## 3. Instalar las dependencias
+
+Con el venv **activado**:
+
+```bash
+pip install -r requirements.txt
+```
+
+Para verificar:
+
+```bash
+pip list
+```
+
+## 4. Ejecutar el servidor de desarrollo
+
+Con el venv activado, desde `backend/`:
+
+```bash
+fastapi dev
+```
+
+El servidor queda en `http://127.0.0.1:8000`.
+
+## 5. Desactivar el venv
+
+Cuando termines:
+
+```bash
+deactivate
+```
+
+## Notas
+
+- La carpeta `venv/` esta ignorada por git; cada developer crea la suya localmente.
+- Si agregas o actualizas dependencias, regenera `requirements.txt`:
+
+  ```bash
+  pip freeze > requirements.txt
+  ```
